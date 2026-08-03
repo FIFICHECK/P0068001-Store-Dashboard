@@ -227,7 +227,7 @@ def main():
         "skus": sku_list,
     }
     with open(TREND_PATH, "w", encoding="utf-8") as f:
-        f.write("const salesTrendData = ")
+        f.write("window.salesTrendData = ")
         json.dump(trend, f, ensure_ascii=False)
         f.write(";\n")
     print(f"Sales Trend: {len(sku_list)} SKUs, {len(dates)} dates")

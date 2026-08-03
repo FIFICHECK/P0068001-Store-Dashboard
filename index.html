@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>P0068001 Store Dashboard — MUJI Hong Kong</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root {
     --bg: #f7f4ee;
@@ -287,6 +288,59 @@
   .trend-table td.total-gmv { font-weight: 700; color: var(--accent); }
   .trend-table td.total-qty { font-weight: 700; color: var(--qty); }
 
+  .range-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    padding: 12px 14px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .rc-label { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+  .range-input {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    outline: none;
+  }
+  .range-input:focus { border-color: var(--accent); }
+  .rc-sep { color: var(--text-dim); font-size: 0.85rem; }
+  .rc-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .rc-btn:hover { background: var(--accent-dark); }
+  .rc-btn-ghost {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .rc-btn-ghost:hover { background: var(--bg-hover); color: var(--text); }
+  .rc-btn-green {
+    background: var(--green);
+    margin-left: auto;
+  }
+  .rc-btn-green:hover { background: #3d664a; }
+  .range-summary {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    margin-bottom: 14px;
+  }
+  .range-summary strong { color: var(--accent); }
+
   @media (max-width: 480px) {
     h1 { font-size: 1.1rem; }
     .stat-value { font-size: 1.35rem; }
@@ -357,6 +411,16 @@
       <input type="text" id="sku-search" placeholder="🔍 搜尋 SKU / 名稱 Search…" class="sku-search">
       <select id="sku-select" class="sku-select"></select>
     </div>
+    <div class="range-controls">
+      <span class="rc-label">📅 日期範圍 Date Range</span>
+      <input type="date" id="range-start" class="range-input" title="開始日期 Start date">
+      <span class="rc-sep">至 to</span>
+      <input type="date" id="range-end" class="range-input" title="結束日期 End date">
+      <button id="range-apply" class="rc-btn">套用 Apply</button>
+      <button id="range-reset" class="rc-btn rc-btn-ghost">重置 Reset</button>
+      <button id="btn-export-excel" class="rc-btn rc-btn-green">📥 下載 Excel</button>
+    </div>
+    <div class="range-summary" id="range-summary"></div>
     <div class="trend-summary" id="trend-summary"></div>
     <div class="chart-wrap"><canvas id="skuGmvChart"></canvas></div>
     <div class="chart-wrap" style="height:240px;margin-top:20px;"><canvas id="skuQtyChart"></canvas></div>
@@ -407,6 +471,8 @@ let skuQtyChart = null;
 let trendData = null;
 let currentSku = null;
 let fullManifest = [];
+let rangeStart = null;
+let rangeEnd = null;
 
 function fmtMoney(n) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -681,8 +747,41 @@ function loadTrend() {
     document.getElementById('sku-select').value = currentSku.sku;
     renderSkuCharts(currentSku);
     renderTrendTable(trendData.skus);
+    setupRangeControls();
   };
   document.body.appendChild(script);
+}
+
+function getRangeIndices() {
+  const dates = trendData.dates;
+  let s = 0, e = dates.length - 1;
+  if (rangeStart) {
+    const idx = dates.indexOf(rangeStart);
+    if (idx >= 0) s = idx;
+  }
+  if (rangeEnd) {
+    const idx = dates.indexOf(rangeEnd);
+    if (idx >= 0) e = idx;
+  }
+  if (s > e) { const t = s; s = e; e = t; }
+  return [s, e];
+}
+
+function getRangeDates() {
+  const dates = trendData.dates;
+  const [s, e] = getRangeIndices();
+  return dates.slice(s, e + 1);
+}
+
+function renderRangeSummary() {
+  const dates = getRangeDates();
+  const el = document.getElementById('range-summary');
+  if (!el) return;
+  if (!rangeStart && !rangeEnd) {
+    el.innerHTML = '';
+    return;
+  }
+  el.innerHTML = '📅 顯示範圍: <strong>' + dates[0] + '</strong> 至 <strong>' + dates[dates.length - 1] + '</strong>（' + dates.length + ' 日）';
 }
 
 function renderTrendTable(skus) {
@@ -694,49 +793,85 @@ function renderTrendTable(skus) {
     document.getElementById('trend-table-count').textContent = '0 SKUs';
     return;
   }
-  const dates = trendData.dates;
-  const dateLabels = dates.map(function(d) { return d.slice(5); });
+  const [sIdx, eIdx] = getRangeIndices();
+  const rangeDates = trendData.dates.slice(sIdx, eIdx + 1);
 
-  // Two-row header: group row (dates span GMV+QTY) + sub row (GMV / QTY)
-  let groupHtml = '<th rowspan="2" style="min-width:110px;">SKU</th><th rowspan="2" style="min-width:200px;">名稱 Name</th>';
-  dates.forEach(function(d) {
-    groupHtml += '<th colspan="2" class="date-group">' + d.slice(5) + '</th>';
-  });
-  groupHtml += '<th rowspan="2">總 GMV</th><th rowspan="2">總 QTY</th>';
-  thead.innerHTML = groupHtml;
+  // Simple header: SKU | Name | GMV | QTY
+  thead.innerHTML = '<tr><th style="min-width:110px;">SKU</th><th style="min-width:200px;">名稱 Name</th><th style="text-align:right;">GMV（' + rangeDates.length + '日）</th><th style="text-align:right;">QTY</th></tr>';
 
-  let subHtml = '';
-  dates.forEach(function() {
-    subHtml += '<th style="text-align:right;">GMV</th><th style="text-align:right;">QTY</th>';
-  });
-  // Append sub row to thead (2nd tr)
-  const subRow = document.createElement('tr');
-  subRow.innerHTML = subHtml;
-  thead.appendChild(subRow);
-
-  // Body rows
   let rowsHtml = '';
   skus.forEach(function(s) {
+    let totalGmv = 0, totalQty = 0;
+    for (let i = sIdx; i <= eIdx; i++) {
+      totalGmv += (s.gmv[i] || 0);
+      totalQty += (s.qty[i] || 0);
+    }
     rowsHtml += '<tr>';
     rowsHtml += '<td class="sku-cell">' + s.sku + '</td>';
     rowsHtml += '<td>' + escapeHtml(s.name) + '</td>';
-    let totalGmv = 0, totalQty = 0;
-    for (let i = 0; i < dates.length; i++) {
-      const g = s.gmv[i] || 0;
-      const q = s.qty[i] || 0;
-      totalGmv += g;
-      totalQty += q;
-      rowsHtml += '<td class="num gmv-cell">' + (g > 0 ? fmtMoney(g) : '—') + '</td>';
-      rowsHtml += '<td class="num qty-cell">' + (q > 0 ? q : '—') + '</td>';
-    }
-    rowsHtml += '<td class="num total-gmv">' + fmtMoney(totalGmv) + '</td>';
-    rowsHtml += '<td class="num total-qty">' + totalQty.toLocaleString() + '</td>';
+    rowsHtml += '<td class="num total-gmv">' + (totalGmv > 0 ? fmtMoney(totalGmv) : '—') + '</td>';
+    rowsHtml += '<td class="num total-qty">' + (totalQty > 0 ? totalQty.toLocaleString() : '—') + '</td>';
     rowsHtml += '</tr>';
   });
   tbody.innerHTML = rowsHtml;
 
   document.getElementById('trend-table-count').textContent =
-    skus.length + ' SKUs · ' + dates.length + ' 日 days';
+    skus.length + ' SKUs · ' + rangeDates.length + ' 日 days';
+  renderRangeSummary();
+}
+
+function exportTrendExcel() {
+  if (!trendData || typeof XLSX === 'undefined') {
+    alert('Excel library not loaded yet — 請稍候再試');
+    return;
+  }
+  const [sIdx, eIdx] = getRangeIndices();
+  const rangeDates = trendData.dates.slice(sIdx, eIdx + 1);
+  const rows = [['SKU', '名稱 Name', 'GMV', 'QTY', '日期範圍', rangeDates[0] + ' 至 ' + rangeDates[rangeDates.length - 1]]];
+  trendData.skus.forEach(function(s) {
+    let totalGmv = 0, totalQty = 0;
+    for (let i = sIdx; i <= eIdx; i++) {
+      totalGmv += (s.gmv[i] || 0);
+      totalQty += (s.qty[i] || 0);
+    }
+    rows.push([s.sku, s.name, Math.round(totalGmv * 100) / 100, totalQty]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  // Column widths
+  ws['!cols'] = [{ wch: 18 }, { wch: 60 }, { wch: 14 }, { wch: 10 }, { wch: 30 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sales Trend');
+  const fname = 'P0068001_Sales_Trend_' + rangeDates[0].replace(/-/g, '') + '_' + rangeDates[rangeDates.length - 1].replace(/-/g, '') + '.xlsx';
+  XLSX.writeFile(wb, fname);
+}
+
+function setupRangeControls() {
+  const startEl = document.getElementById('range-start');
+  const endEl = document.getElementById('range-end');
+  const applyBtn = document.getElementById('range-apply');
+  const resetBtn = document.getElementById('range-reset');
+  const exportBtn = document.getElementById('btn-export-excel');
+  if (!trendData || trendData.dates.length === 0) return;
+  const dates = trendData.dates;
+  startEl.min = dates[0];
+  startEl.max = dates[dates.length - 1];
+  endEl.min = dates[0];
+  endEl.max = dates[dates.length - 1];
+  applyBtn.addEventListener('click', function() {
+    rangeStart = startEl.value || null;
+    rangeEnd = endEl.value || null;
+    renderTrendTable(trendData.skus);
+    renderSkuCharts(currentSku);
+  });
+  resetBtn.addEventListener('click', function() {
+    startEl.value = '';
+    endEl.value = '';
+    rangeStart = null;
+    rangeEnd = null;
+    renderTrendTable(trendData.skus);
+    renderSkuCharts(currentSku);
+  });
+  exportBtn.addEventListener('click', exportTrendExcel);
 }
 
 function escapeHtml(str) {

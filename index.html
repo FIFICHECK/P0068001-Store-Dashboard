@@ -296,6 +296,15 @@
   .trend-table td.qty-cell { color: var(--qty); }
   .trend-table td.total-gmv { font-weight: 700; color: var(--accent); }
   .trend-table td.total-qty { font-weight: 700; color: var(--qty); }
+  .trend-table tr.total-row td {
+    background: var(--bg-soft);
+    border-top: 2px solid var(--border);
+    font-weight: 700;
+  }
+  .trend-table tr.total-row .total-label {
+    color: var(--text);
+    font-weight: 700;
+  }
 
   .range-controls {
     display: flex;
@@ -482,6 +491,7 @@ let currentSku = null;
 let fullManifest = [];
 let rangeStart = null;
 let rangeEnd = null;
+let currentTableSkus = [];
 
 function fmtMoney(n) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -805,27 +815,36 @@ function renderTrendTable(skus) {
   const [sIdx, eIdx] = getRangeIndices();
   const rangeDates = trendData.dates.slice(sIdx, eIdx + 1);
 
-  // Simple header: SKU | Name | GMV | QTY
-  thead.innerHTML = '<tr><th style="min-width:110px;">SKU</th><th style="min-width:200px;">名稱 Name</th><th style="text-align:right;">GMV（' + rangeDates.length + '日）</th><th style="text-align:right;">QTY</th></tr>';
+  // Header: SKU | GMV | QTY
+  thead.innerHTML = '<tr><th style="min-width:110px;">SKU</th><th style="text-align:right;">GMV（' + rangeDates.length + '日）</th><th style="text-align:right;">QTY</th></tr>';
 
   let rowsHtml = '';
+  let allGmv = 0, allQty = 0;
   skus.forEach(function(s) {
     let totalGmv = 0, totalQty = 0;
     for (let i = sIdx; i <= eIdx; i++) {
       totalGmv += (s.gmv[i] || 0);
       totalQty += (s.qty[i] || 0);
     }
+    allGmv += totalGmv;
+    allQty += totalQty;
     rowsHtml += '<tr>';
     rowsHtml += '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/' + encodeURIComponent(s.sku) + '" target="_blank" rel="noopener">' + s.sku + '</a></td>';
-    rowsHtml += '<td>' + escapeHtml(s.name) + '</td>';
     rowsHtml += '<td class="num total-gmv">' + (totalGmv > 0 ? fmtMoney(totalGmv) : '—') + '</td>';
     rowsHtml += '<td class="num total-qty">' + (totalQty > 0 ? totalQty.toLocaleString() : '—') + '</td>';
     rowsHtml += '</tr>';
   });
+  // Total row
+  rowsHtml += '<tr class="total-row">';
+  rowsHtml += '<td class="sku-cell total-label">總計 Total</td>';
+  rowsHtml += '<td class="num total-gmv">' + fmtMoney(allGmv) + '</td>';
+  rowsHtml += '<td class="num total-qty">' + allQty.toLocaleString() + '</td>';
+  rowsHtml += '</tr>';
   tbody.innerHTML = rowsHtml;
 
   document.getElementById('trend-table-count').textContent =
     skus.length + ' SKUs · ' + rangeDates.length + ' 日 days';
+  currentTableSkus = skus;
   renderRangeSummary();
 }
 
@@ -836,18 +855,28 @@ function exportTrendExcel() {
   }
   const [sIdx, eIdx] = getRangeIndices();
   const rangeDates = trendData.dates.slice(sIdx, eIdx + 1);
-  const rows = [['SKU', '名稱 Name', 'GMV', 'QTY', '日期範圍', rangeDates[0] + ' 至 ' + rangeDates[rangeDates.length - 1]]];
-  trendData.skus.forEach(function(s) {
+  const rows = [['SKU', 'GMV', 'QTY', '日期範圍', rangeDates[0] + ' 至 ' + rangeDates[rangeDates.length - 1]]];
+  const exportSkus = (currentTableSkus && currentTableSkus.length > 0) ? currentTableSkus : trendData.skus;
+  exportSkus.forEach(function(s) {
     let totalGmv = 0, totalQty = 0;
     for (let i = sIdx; i <= eIdx; i++) {
       totalGmv += (s.gmv[i] || 0);
       totalQty += (s.qty[i] || 0);
     }
-    rows.push([s.sku, s.name, Math.round(totalGmv * 100) / 100, totalQty]);
+    rows.push([s.sku, Math.round(totalGmv * 100) / 100, totalQty]);
   });
+  // Append total row
+  let allGmv = 0, allQty = 0;
+  exportSkus.forEach(function(s) {
+    for (let i = sIdx; i <= eIdx; i++) {
+      allGmv += (s.gmv[i] || 0);
+      allQty += (s.qty[i] || 0);
+    }
+  });
+  rows.push(['總計 Total', Math.round(allGmv * 100) / 100, allQty]);
   const ws = XLSX.utils.aoa_to_sheet(rows);
   // Column widths
-  ws['!cols'] = [{ wch: 18 }, { wch: 60 }, { wch: 14 }, { wch: 10 }, { wch: 30 }];
+  ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 10 }, { wch: 30 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Sales Trend');
   const fname = 'P0068001_Sales_Trend_' + rangeDates[0].replace(/-/g, '') + '_' + rangeDates[rangeDates.length - 1].replace(/-/g, '') + '.xlsx';
@@ -897,7 +926,11 @@ function setupTrendControls() {
   select.addEventListener('change', function() {
     if (!trendData) return;
     currentSku = trendData.skus.find(function(s) { return s.sku === select.value; });
-    if (currentSku) renderSkuCharts(currentSku);
+    if (currentSku) {
+      renderSkuCharts(currentSku);
+      // Table follows: show only the selected SKU
+      renderTrendTable([currentSku]);
+    }
   });
   search.addEventListener('input', function() {
     if (!trendData) return;
@@ -907,11 +940,11 @@ function setupTrendControls() {
       currentSku = filtered[0];
       select.value = currentSku.sku;
       renderSkuCharts(currentSku);
+      renderTrendTable(filtered);
     } else {
       select.innerHTML = '<option value="">無匹配 No match</option>';
+      renderTrendTable([]);
     }
-    // Update table with filtered SKUs (keep table showing matches)
-    renderTrendTable(filtered.length > 0 ? filtered : trendData.skus);
   });
 }
 

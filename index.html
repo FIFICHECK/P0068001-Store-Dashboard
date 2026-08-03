@@ -149,6 +149,64 @@
   }
   .empty { text-align: center; color: var(--text-dim); padding: 40px 0; font-size: 0.9rem; }
 
+  .monthly-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+  }
+  .monthly-card {
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .monthly-card .m-month { font-size: 1.05rem; font-weight: 700; }
+  .monthly-card .m-stats { color: var(--text-dim); font-size: 0.8rem; line-height: 1.6; }
+  .monthly-card .m-stats strong { color: var(--text); }
+  .monthly-card .m-gmv { color: var(--accent-light); font-weight: 700; font-size: 1.15rem; }
+  .trend-controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .sku-search {
+    flex: 1;
+    min-width: 200px;
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    padding: 10px 14px;
+    font-size: 0.9rem;
+    outline: none;
+  }
+  .sku-search:focus { border-color: var(--accent); }
+  .sku-select {
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    padding: 10px 14px;
+    font-size: 0.9rem;
+    min-width: 260px;
+    max-width: 100%;
+    outline: none;
+  }
+  .sku-select:focus { border-color: var(--accent); }
+  .trend-summary {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+    font-size: 0.85rem;
+  }
+  .trend-summary .ts-item { color: var(--text-dim); }
+  .trend-summary .ts-item strong { color: var(--text); font-weight: 700; }
+
   @media (max-width: 480px) {
     h1 { font-size: 1.1rem; }
     .stat-value { font-size: 1.3rem; }
@@ -200,6 +258,26 @@
   </div>
 
   <div class="panel">
+    <div class="panel-title">📦 月度合併報表 &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">Monthly Merged Reports</span></div>
+    <div class="panel-desc">每個月份 group 埋一份 XLSX（包含該月所有日嘅訂單明細）</div>
+    <div id="monthly-container" class="monthly-grid">
+      <div class="empty">載入中…</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">📊 Sales Trend &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">by SKU · Daily GMV &amp; QTY</span></div>
+    <div class="panel-desc">揀選 SKU 睇每日 GMV &amp; 數量走勢</div>
+    <div class="trend-controls">
+      <input type="text" id="sku-search" placeholder="🔍 搜尋 SKU / 名稱 Search…" class="sku-search">
+      <select id="sku-select" class="sku-select"></select>
+    </div>
+    <div class="trend-summary" id="trend-summary"></div>
+    <div class="chart-wrap"><canvas id="skuGmvChart"></canvas></div>
+    <div class="chart-wrap" style="height:240px;margin-top:20px;"><canvas id="skuQtyChart"></canvas></div>
+  </div>
+
+  <div class="panel">
     <div class="panel-title">📄 訂單報表 &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">Order Reports</span></div>
     <div class="panel-desc">點擊下載 XLSX 原始檔案（優先 23:59 最終版）</div>
     <div class="table-scroll">
@@ -224,7 +302,13 @@
 
 <script>
 const MANIFEST_URL = 'data/order_reports_manifest.json';
+const MONTHLY_URL = 'data/monthly_reports.json';
+const TREND_URL = 'data/sales_trend_data.js';
 let gmvChart = null;
+let skuGmvChart = null;
+let skuQtyChart = null;
+let trendData = null;
+let currentSku = null;
 
 function fmtMoney(n) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -322,6 +406,170 @@ function renderChart(manifest) {
   });
 }
 
+function renderMonthly(monthly) {
+  const container = document.getElementById('monthly-container');
+  if (!monthly || monthly.length === 0) {
+    container.innerHTML = '<div class="empty">暫無月度報表 No monthly reports yet</div>';
+    return;
+  }
+  let html = '';
+  monthly.forEach(function(m) {
+    html +=
+      '<div class="monthly-card">' +
+      '<div class="m-month">📅 ' + m.label + '</div>' +
+      '<div class="m-gmv">' + m.gmv + '</div>' +
+      '<div class="m-stats">' +
+      '📆 <strong>' + m.days + '</strong> 日 Days<br>' +
+      '📦 <strong>' + (m.orders != null ? m.orders.toLocaleString() : '—') + '</strong> 訂單行 Order Lines<br>' +
+      '🧮 <strong>' + (m.qty != null ? Number(m.qty).toLocaleString() : '—') + '</strong> 件 Qty' +
+      '</div>' +
+      '<a class="dl-btn" href="reports/monthly/' + encodeURIComponent(m.filename) + '" download>' +
+      '📥 下載月度報表 XLSX</a>' +
+      '</div>';
+  });
+  container.innerHTML = html;
+}
+
+function buildSkuOptions(skus) {
+  const select = document.getElementById('sku-select');
+  select.innerHTML = '';
+  skus.forEach(function(s) {
+    const opt = document.createElement('option');
+    opt.value = s.sku;
+    opt.textContent = s.sku + ' — ' + s.name;
+    select.appendChild(opt);
+  });
+}
+
+function filterSkuList(skus, query) {
+  const q = query.toLowerCase();
+  if (!q) return skus;
+  return skus.filter(function(s) {
+    return s.sku.toLowerCase().includes(q) || s.name.toLowerCase().includes(q);
+  });
+}
+
+function renderSkuCharts(sku) {
+  if (!trendData || !sku) return;
+  const dates = trendData.dates;
+  const labels = dates.map(function(d) { return d.slice(5); });
+
+  const gmvData = sku.gmv;
+  const qtyData = sku.qty;
+  const totalGmv = gmvData.reduce(function(a, b) { return a + b; }, 0);
+  const totalQty = qtyData.reduce(function(a, b) { return a + b; }, 0);
+  const daysWithSales = gmvData.filter(function(v) { return v > 0; }).length;
+
+  document.getElementById('trend-summary').innerHTML =
+    '<span class="ts-item">🧮 總 GMV: <strong>' + fmtMoney(totalGmv) + '</strong></span>' +
+    '<span class="ts-item">📦 總 QTY: <strong>' + totalQty.toLocaleString() + '</strong></span>' +
+    '<span class="ts-item">📆 有銷售日數: <strong>' + daysWithSales + '/' + dates.length + '</strong></span>' +
+    '<span class="ts-item">💵 平均日 GMV: <strong>' + fmtMoney(totalGmv / dates.length) + '</strong></span>';
+
+  if (skuGmvChart) skuGmvChart.destroy();
+  skuGmvChart = new Chart(document.getElementById('skuGmvChart'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'GMV',
+        data: gmvData,
+        backgroundColor: 'rgba(231, 76, 60, 0.75)',
+        borderColor: 'rgba(231, 76, 60, 1)',
+        borderWidth: 1,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        title: { display: true, text: '💰 每日 GMV · Daily GMV', color: '#e0e0e0', font: { size: 14 } },
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: function(ct) { return ' GMV: ' + fmtMoney(ct.parsed.y); } }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#9aa3b2' }, grid: { color: '#232833' } },
+        y: { ticks: { color: '#9aa3b2' }, grid: { color: '#232833' } }
+      }
+    }
+  });
+
+  if (skuQtyChart) skuQtyChart.destroy();
+  skuQtyChart = new Chart(document.getElementById('skuQtyChart'), {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'QTY',
+        data: qtyData,
+        backgroundColor: 'rgba(52, 152, 219, 0.2)',
+        borderColor: 'rgba(52, 152, 219, 1)',
+        borderWidth: 2,
+        tension: 0.3,
+        fill: true,
+        pointRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        title: { display: true, text: '📦 每日數量 · Daily QTY', color: '#e0e0e0', font: { size: 14 } },
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: function(ct) { return ' QTY: ' + ct.parsed.y.toLocaleString(); } }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#9aa3b2' }, grid: { color: '#232833' } },
+        y: { ticks: { color: '#9aa3b2' }, grid: { color: '#232833' } }
+      }
+    }
+  });
+}
+
+function loadTrend() {
+  const script = document.createElement('script');
+  script.src = TREND_URL + '?v=' + Date.now();
+  script.onload = function() {
+    trendData = window.salesTrendData;
+    if (!trendData || !trendData.skus || trendData.skus.length === 0) {
+      document.querySelector('.trend-controls').innerHTML = '<div class="empty">暫無 SKU 數據 No SKU data</div>';
+      return;
+    }
+    buildSkuOptions(trendData.skus);
+    currentSku = trendData.skus[0];
+    document.getElementById('sku-select').value = currentSku.sku;
+    renderSkuCharts(currentSku);
+  };
+  document.body.appendChild(script);
+}
+
+function setupTrendControls() {
+  const select = document.getElementById('sku-select');
+  const search = document.getElementById('sku-search');
+  select.addEventListener('change', function() {
+    if (!trendData) return;
+    currentSku = trendData.skus.find(function(s) { return s.sku === select.value; });
+    if (currentSku) renderSkuCharts(currentSku);
+  });
+  search.addEventListener('input', function() {
+    if (!trendData) return;
+    const filtered = filterSkuList(trendData.skus, search.value);
+    buildSkuOptions(filtered);
+    if (filtered.length > 0) {
+      currentSku = filtered[0];
+      select.value = currentSku.sku;
+      renderSkuCharts(currentSku);
+    } else {
+      select.innerHTML = '<option value="">無匹配 No match</option>';
+    }
+  });
+}
+
 async function load() {
   document.getElementById('footer-updated').textContent = new Date().toLocaleString('zh-HK', { hour12: false });
   try {
@@ -331,6 +579,16 @@ async function load() {
     renderStats(manifest);
     renderTable(manifest);
     renderChart(manifest);
+    // Load monthly reports
+    const mresp = await fetch(MONTHLY_URL + '?v=' + Date.now());
+    if (mresp.ok) {
+      renderMonthly(await mresp.json());
+    } else {
+      document.getElementById('monthly-container').innerHTML = '<div class="empty">暫無月度報表 No monthly reports yet</div>';
+    }
+    // Load sales trend + setup controls
+    setupTrendControls();
+    loadTrend();
   } catch (e) {
     document.getElementById('report-tbody').innerHTML =
       '<tr><td colspan="6" class="empty">⚠️ 無法載入報表資料 Failed to load data: ' + e.message + '</td></tr>';

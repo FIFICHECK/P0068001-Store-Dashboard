@@ -332,8 +332,13 @@
   </div>
 
   <div class="panel">
-    <div class="panel-title">📈 GMV 走勢 &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">GMV Trend</span></div>
-    <div class="panel-desc">每日訂單報表 GMV（Column AA: Total Q×U−D=T）</div>
+    <div class="panel-title">📈 GMV 走勢 &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">GMV Trend · 折線圖 Line Chart</span></div>
+    <div class="panel-desc" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
+      <span>每日訂單報表 GMV（Column AA: Total Q×U−D=T）</span>
+      <select id="gmv-month-filter" class="sku-select" style="min-width:160px;margin-left:auto;">
+        <option value="all">🗓️ 全部月份 All Months</option>
+      </select>
+    </div>
     <div class="chart-wrap"><canvas id="gmvChart"></canvas></div>
   </div>
 
@@ -401,6 +406,7 @@ let skuGmvChart = null;
 let skuQtyChart = null;
 let trendData = null;
 let currentSku = null;
+let fullManifest = [];
 
 function fmtMoney(n) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -447,27 +453,65 @@ function renderTable(manifest) {
   });
 }
 
+function populateMonthFilter(manifest) {
+  const select = document.getElementById('gmv-month-filter');
+  if (!select) return;
+  const months = [];
+  manifest.forEach(function(r) {
+    const iso = r.date_iso || '';
+    if (iso.length >= 7) {
+      const mk = iso.slice(0, 7);
+      if (months.indexOf(mk) === -1) months.push(mk);
+    }
+  });
+  months.sort();
+  select.innerHTML = '<option value="all">🗓️ 全部月份 All Months</option>';
+  months.forEach(function(mk) {
+    const opt = document.createElement('option');
+    opt.value = mk;
+    opt.textContent = mk.slice(0, 4) + '年 ' + parseInt(mk.slice(5, 7), 10) + '月';
+    select.appendChild(opt);
+  });
+}
+
 function renderChart(manifest) {
   const ctx = document.getElementById('gmvChart');
   if (!manifest || manifest.length === 0) {
     ctx.parentElement.innerHTML = '<div class="empty">暫無數據 No data yet</div>';
     return;
   }
-  const sorted = manifest.slice().reverse();
+  // Apply month filter if selected
+  const filterEl = document.getElementById('gmv-month-filter');
+  const selectedMonth = filterEl ? filterEl.value : 'all';
+  let filtered = manifest;
+  if (selectedMonth !== 'all') {
+    filtered = manifest.filter(function(r) {
+      return (r.date_iso || '').slice(0, 7) === selectedMonth;
+    });
+  }
+  if (filtered.length === 0) {
+    filtered = manifest;
+  }
+  const sorted = filtered.slice().reverse();
   const labels = sorted.map(function(r) { return (r.date_iso || r.date || '').slice(5); });
   const data = sorted.map(function(r) { return parseGmv(r.gmv_raw || r.gmv); });
   if (gmvChart) gmvChart.destroy();
   gmvChart = new Chart(ctx, {
-    type: 'bar',
+    type: 'line',
     data: {
       labels: labels,
       datasets: [{
         label: 'GMV',
         data: data,
-        backgroundColor: 'rgba(193, 0, 46, 0.75)',
+        backgroundColor: 'rgba(193, 0, 46, 0.12)',
         borderColor: 'rgba(193, 0, 46, 1)',
-        borderWidth: 1,
-        borderRadius: 6
+        borderWidth: 2,
+        pointRadius: 5,
+        pointBackgroundColor: '#fff',
+        pointBorderColor: 'rgba(193, 0, 46, 1)',
+        pointBorderWidth: 2,
+        tension: 0.3,
+        fill: true
       }]
     },
     options: {
@@ -733,9 +777,18 @@ async function load() {
     const resp = await fetch(MANIFEST_URL + '?v=' + Date.now());
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const manifest = await resp.json();
+    fullManifest = manifest;
+    populateMonthFilter(manifest);
     renderStats(manifest);
     renderTable(manifest);
     renderChart(manifest);
+    // Month filter change listener
+    const monthFilter = document.getElementById('gmv-month-filter');
+    if (monthFilter) {
+      monthFilter.addEventListener('change', function() {
+        renderChart(fullManifest);
+      });
+    }
     // Load monthly reports
     const mresp = await fetch(MONTHLY_URL + '?v=' + Date.now());
     if (mresp.ok) {

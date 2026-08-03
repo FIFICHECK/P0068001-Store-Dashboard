@@ -305,6 +305,40 @@
     color: var(--text);
     font-weight: 700;
   }
+  .trend-total-bar {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .trend-total-bar .tb-label {
+    font-weight: 700;
+    color: var(--text);
+    font-size: 0.9rem;
+  }
+  .trend-total-bar .tb-gmv {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+  .trend-total-bar .tb-qty {
+    color: var(--qty);
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+  .month-group-row td {
+    background: #eae5db;
+    color: var(--text);
+    font-weight: 700;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    letter-spacing: 0.3px;
+  }
 
   .range-controls {
     display: flex;
@@ -415,6 +449,17 @@
   </div>
 
   <div class="panel">
+    <div class="panel-title">📄 訂單報表 &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">Order Reports</span></div>
+    <div class="panel-desc">點擊下載 XLSX 原始檔案（優先 23:59 最終版）</div>
+    <div class="table-scroll" id="report-scroll">
+      <table>
+        <thead id="report-thead"></thead>
+        <tbody id="report-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
     <div class="panel-title">📦 月度合併報表 &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">Monthly Merged Reports</span></div>
     <div class="panel-desc">每個月份 group 埋一份 XLSX（包含該月所有日嘅訂單明細）</div>
     <div id="monthly-container" class="monthly-grid">
@@ -453,26 +498,7 @@
           <tbody id="trend-tbody"></tbody>
         </table>
       </div>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-title">📄 訂單報表 &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">Order Reports</span></div>
-    <div class="panel-desc">點擊下載 XLSX 原始檔案（優先 23:59 最終版）</div>
-    <div class="table-scroll">
-      <table>
-        <thead>
-          <tr>
-            <th>日期 Date</th>
-            <th>GMV</th>
-            <th>訂單 Order Lines</th>
-            <th>件數 Qty</th>
-            <th>版本 Version</th>
-            <th>下載 Download</th>
-          </tr>
-        </thead>
-        <tbody id="report-tbody"></tbody>
-      </table>
+      <div class="trend-total-bar" id="trend-total-bar"></div>
     </div>
   </div>
 
@@ -515,26 +541,61 @@ function renderStats(manifest) {
 
 function renderTable(manifest) {
   const tbody = document.getElementById('report-tbody');
+  const thead = document.getElementById('report-thead');
+  const scroll = document.getElementById('report-scroll');
   tbody.innerHTML = '';
   if (!manifest || manifest.length === 0) {
+    thead.innerHTML = '';
     tbody.innerHTML = '<tr><td colspan="6" class="empty">暫無報表 No reports yet</td></tr>';
     return;
   }
+  // Header
+  thead.innerHTML = '<tr><th>日期 Date</th><th>GMV</th><th>訂單 Order Lines</th><th>件數 Qty</th><th>版本 Version</th><th>下載 Download</th></tr>';
+
+  // Group by month (manifest is newest-first, so iterate and group)
+  const months = [];
+  const byMonth = {};
   manifest.forEach(function(r) {
-    const isFinal = r.timestamp === '23:59';
-    const badge = isFinal
-      ? '<span class="badge-final">✓ 23:59 最終版</span>'
-      : '<span class="badge-partial">⏳ ' + r.timestamp + '</span>';
-    const tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td><span class="date">' + (r.date_iso || r.date || '—') + '</span></td>' +
-      '<td><span class="gmv-val">' + (r.gmv || fmtMoney(parseGmv(r.gmv_raw))) + '</span></td>' +
-      '<td>' + (r.orders != null ? r.orders.toLocaleString() : '—') + '</td>' +
-      '<td>' + (r.qty != null ? r.qty.toLocaleString() : '—') + '</td>' +
-      '<td>' + badge + '</td>' +
-      '<td><a class="dl-btn" href="reports/order_reports/' + encodeURIComponent(r.filename) + '" download>' +
-      '📥 下載 XLSX</a></td>';
-    tbody.appendChild(tr);
+    const mk = (r.date_iso || '').slice(0, 7);
+    if (!byMonth[mk]) { byMonth[mk] = []; months.push(mk); }
+    byMonth[mk].push(r);
+  });
+
+  // Total rows count for scroll decision (7 days -> scroll)
+  const totalRows = manifest.length;
+  if (totalRows > 7) {
+    scroll.style.maxHeight = '380px';
+    scroll.style.overflowY = 'auto';
+  } else {
+    scroll.style.maxHeight = '';
+    scroll.style.overflowY = '';
+  }
+
+  let totalDays = 0;
+  months.forEach(function(mk) {
+    const rows = byMonth[mk];
+    const y = mk.slice(0, 4), mo = parseInt(mk.slice(5, 7), 10);
+    const grp = document.createElement('tr');
+    grp.className = 'month-group-row';
+    grp.innerHTML = '<td colspan="6">📅 ' + y + '年 ' + mo + '月 · ' + rows.length + ' 日</td>';
+    tbody.appendChild(grp);
+    totalDays += rows.length;
+    rows.forEach(function(r) {
+      const isFinal = r.timestamp === '23:59';
+      const badge = isFinal
+        ? '<span class="badge-final">✓ 23:59 最終版</span>'
+        : '<span class="badge-partial">⏳ ' + r.timestamp + '</span>';
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><span class="date">' + (r.date_iso || r.date || '—') + '</span></td>' +
+        '<td><span class="gmv-val">' + (r.gmv || fmtMoney(parseGmv(r.gmv_raw))) + '</span></td>' +
+        '<td>' + (r.orders != null ? r.orders.toLocaleString() : '—') + '</td>' +
+        '<td>' + (r.qty != null ? r.qty.toLocaleString() : '—') + '</td>' +
+        '<td>' + badge + '</td>' +
+        '<td><a class="dl-btn" href="reports/order_reports/' + encodeURIComponent(r.filename) + '" download>' +
+        '📥 下載 XLSX</a></td>';
+      tbody.appendChild(tr);
+    });
   });
 }
 
@@ -654,10 +715,15 @@ function renderMonthly(monthly) {
 function buildSkuOptions(skus) {
   const select = document.getElementById('sku-select');
   select.innerHTML = '';
+  // All SKU option at top
+  const allOpt = document.createElement('option');
+  allOpt.value = 'all';
+  allOpt.textContent = '📋 全部 SKU All SKUs';
+  select.appendChild(allOpt);
   skus.forEach(function(s) {
     const opt = document.createElement('option');
     opt.value = s.sku;
-    opt.textContent = s.sku + ' — ' + s.name;
+    opt.textContent = displaySku(s.sku) + ' — ' + s.name;
     select.appendChild(opt);
   });
 }
@@ -671,17 +737,31 @@ function filterSkuList(skus, query) {
 }
 
 function renderSkuCharts(sku) {
-  if (!trendData || !sku) return;
+  if (!trendData) return;
   const dates = trendData.dates;
   const labels = dates.map(function(d) { return d.slice(5); });
 
-  const gmvData = sku.gmv;
-  const qtyData = sku.qty;
+  let gmvData, qtyData, skuLabel;
+  if (!sku) {
+    // All SKU aggregate: sum all SKUs per day
+    skuLabel = '全部 SKU All SKUs';
+    gmvData = dates.map(function(_, i) {
+      return trendData.skus.reduce(function(a, s) { return a + (s.gmv[i] || 0); }, 0);
+    });
+    qtyData = dates.map(function(_, i) {
+      return trendData.skus.reduce(function(a, s) { return a + (s.qty[i] || 0); }, 0);
+    });
+  } else {
+    skuLabel = displaySku(sku.sku) + ' — ' + sku.name;
+    gmvData = sku.gmv;
+    qtyData = sku.qty;
+  }
   const totalGmv = gmvData.reduce(function(a, b) { return a + b; }, 0);
   const totalQty = qtyData.reduce(function(a, b) { return a + b; }, 0);
   const daysWithSales = gmvData.filter(function(v) { return v > 0; }).length;
 
   document.getElementById('trend-summary').innerHTML =
+    '<span class="ts-item">🔎 ' + escapeHtml(skuLabel) + '</span>' +
     '<span class="ts-item">🧮 總 GMV: <strong>' + fmtMoney(totalGmv) + '</strong></span>' +
     '<span class="ts-item">📦 總 QTY: <strong>' + totalQty.toLocaleString() + '</strong></span>' +
     '<span class="ts-item">📆 有銷售日數: <strong>' + daysWithSales + '/' + dates.length + '</strong></span>' +
@@ -689,16 +769,21 @@ function renderSkuCharts(sku) {
 
   if (skuGmvChart) skuGmvChart.destroy();
   skuGmvChart = new Chart(document.getElementById('skuGmvChart'), {
-    type: 'bar',
+    type: 'line',
     data: {
       labels: labels,
       datasets: [{
         label: 'GMV',
         data: gmvData,
-        backgroundColor: 'rgba(193, 0, 46, 0.75)',
+        backgroundColor: 'rgba(193, 0, 46, 0.12)',
         borderColor: 'rgba(193, 0, 46, 1)',
-        borderWidth: 1,
-        borderRadius: 6
+        borderWidth: 2,
+        pointRadius: 5,
+        pointBackgroundColor: '#fff',
+        pointBorderColor: 'rgba(193, 0, 46, 1)',
+        pointBorderWidth: 2,
+        tension: 0.3,
+        fill: true
       }]
     },
     options: {
@@ -762,9 +847,10 @@ function loadTrend() {
       return;
     }
     buildSkuOptions(trendData.skus);
-    currentSku = trendData.skus[0];
-    document.getElementById('sku-select').value = currentSku.sku;
-    renderSkuCharts(currentSku);
+    // Default: All SKU (show all + aggregate chart)
+    currentSku = null;
+    document.getElementById('sku-select').value = 'all';
+    renderSkuCharts(null);
     renderTrendTable(trendData.skus);
     setupRangeControls();
   };
@@ -803,6 +889,11 @@ function renderRangeSummary() {
   el.innerHTML = '📅 顯示範圍: <strong>' + dates[0] + '</strong> 至 <strong>' + dates[dates.length - 1] + '</strong>（' + dates.length + ' 日）';
 }
 
+function displaySku(sku) {
+  // Strip P0068001_S_ prefix for display, keep full for link
+  return String(sku).replace(/^P0068001_S_/, '');
+}
+
 function renderTrendTable(skus) {
   const thead = document.getElementById('trend-thead');
   const tbody = document.getElementById('trend-tbody');
@@ -810,6 +901,7 @@ function renderTrendTable(skus) {
     thead.innerHTML = '';
     tbody.innerHTML = '<tr><td class="empty" style="padding:24px;">暫無數據 No data</td></tr>';
     document.getElementById('trend-table-count').textContent = '0 SKUs';
+    document.getElementById('trend-total-bar').innerHTML = '';
     return;
   }
   const [sIdx, eIdx] = getRangeIndices();
@@ -829,18 +921,18 @@ function renderTrendTable(skus) {
     allGmv += totalGmv;
     allQty += totalQty;
     rowsHtml += '<tr>';
-    rowsHtml += '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/' + encodeURIComponent(s.sku) + '" target="_blank" rel="noopener">' + s.sku + '</a></td>';
+    rowsHtml += '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/' + encodeURIComponent(s.sku) + '" target="_blank" rel="noopener">' + displaySku(s.sku) + '</a></td>';
     rowsHtml += '<td class="num total-gmv">' + (totalGmv > 0 ? fmtMoney(totalGmv) : '—') + '</td>';
     rowsHtml += '<td class="num total-qty">' + (totalQty > 0 ? totalQty.toLocaleString() : '—') + '</td>';
     rowsHtml += '</tr>';
   });
-  // Total row
-  rowsHtml += '<tr class="total-row">';
-  rowsHtml += '<td class="sku-cell total-label">總計 Total</td>';
-  rowsHtml += '<td class="num total-gmv">' + fmtMoney(allGmv) + '</td>';
-  rowsHtml += '<td class="num total-qty">' + allQty.toLocaleString() + '</td>';
-  rowsHtml += '</tr>';
   tbody.innerHTML = rowsHtml;
+
+  // Fixed total bar (outside scroll)
+  document.getElementById('trend-total-bar').innerHTML =
+    '<span class="tb-label">📊 總計 Total</span>' +
+    '<span class="tb-gmv">' + fmtMoney(allGmv) + '</span>' +
+    '<span class="tb-qty">' + allQty.toLocaleString() + ' 件</span>';
 
   document.getElementById('trend-table-count').textContent =
     skus.length + ' SKUs · ' + rangeDates.length + ' 日 days';
@@ -925,6 +1017,13 @@ function setupTrendControls() {
   const search = document.getElementById('sku-search');
   select.addEventListener('change', function() {
     if (!trendData) return;
+    if (select.value === 'all') {
+      // All SKU: show all in table, charts show aggregate
+      currentSku = null;
+      renderSkuCharts(null);
+      renderTrendTable(trendData.skus);
+      return;
+    }
     currentSku = trendData.skus.find(function(s) { return s.sku === select.value; });
     if (currentSku) {
       renderSkuCharts(currentSku);

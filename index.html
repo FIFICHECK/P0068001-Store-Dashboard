@@ -281,6 +281,15 @@
     background: var(--bg-card);
     z-index: 1;
   }
+  .trend-table .sku-link {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--accent);
+  }
+  .trend-table .sku-link:hover {
+    color: var(--accent-dark);
+    border-bottom-style: solid;
+  }
   .trend-table tbody tr:hover td.sku-cell { background: var(--bg-soft); }
   .trend-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .trend-table td.gmv-cell { color: var(--accent); }
@@ -406,7 +415,10 @@
 
   <div class="panel">
     <div class="panel-title">📊 Sales Trend &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">by SKU · Daily GMV &amp; QTY</span></div>
-    <div class="panel-desc">揀選 SKU 睇每日 GMV &amp; 數量走勢</div>
+    <div class="panel-desc">揀選 SKU 睇每日 GMV &amp; 數量走勢（點擊下方 SKU 連結可睇 HKTVmall 產品頁）</div>
+    <div class="trend-summary" id="trend-summary"></div>
+    <div class="chart-wrap"><canvas id="skuGmvChart"></canvas></div>
+    <div class="chart-wrap" style="height:240px;margin-top:20px;"><canvas id="skuQtyChart"></canvas></div>
     <div class="trend-controls">
       <input type="text" id="sku-search" placeholder="🔍 搜尋 SKU / 名稱 Search…" class="sku-search">
       <select id="sku-select" class="sku-select"></select>
@@ -421,9 +433,6 @@
       <button id="btn-export-excel" class="rc-btn rc-btn-green">📥 下載 Excel</button>
     </div>
     <div class="range-summary" id="range-summary"></div>
-    <div class="trend-summary" id="trend-summary"></div>
-    <div class="chart-wrap"><canvas id="skuGmvChart"></canvas></div>
-    <div class="chart-wrap" style="height:240px;margin-top:20px;"><canvas id="skuQtyChart"></canvas></div>
     <div class="trend-table-block">
       <div class="trend-table-header">
         <span class="tt-title">📋 全部 SKU 明細 &nbsp;<span style="color:var(--text-dim);font-weight:400;font-size:0.8rem;">All SKUs · Daily GMV &amp; QTY</span></span>
@@ -807,7 +816,7 @@ function renderTrendTable(skus) {
       totalQty += (s.qty[i] || 0);
     }
     rowsHtml += '<tr>';
-    rowsHtml += '<td class="sku-cell">' + s.sku + '</td>';
+    rowsHtml += '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/' + encodeURIComponent(s.sku) + '" target="_blank" rel="noopener">' + s.sku + '</a></td>';
     rowsHtml += '<td>' + escapeHtml(s.name) + '</td>';
     rowsHtml += '<td class="num total-gmv">' + (totalGmv > 0 ? fmtMoney(totalGmv) : '—') + '</td>';
     rowsHtml += '<td class="num total-qty">' + (totalQty > 0 ? totalQty.toLocaleString() : '—') + '</td>';

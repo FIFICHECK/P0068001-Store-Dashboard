@@ -66,7 +66,11 @@ def read_orders(path):
         if not isinstance(gmv, (int, float)):
             gmv = 0
         name_cn = ws.cell(row=r, column=22).value or ws.cell(row=r, column=21).value or str(sku)
-        rows.append((str(sku), str(name_cn), float(qty), float(gmv)))
+        # Normalize SKU: prepend store prefix P0068001_S_ if not already present
+        sku_str = str(sku)
+        if not sku_str.startswith("P0068001_S_"):
+            sku_str = "P0068001_S_" + sku_str
+        rows.append((sku_str, str(name_cn), float(qty), float(gmv)))
     return rows
 
 

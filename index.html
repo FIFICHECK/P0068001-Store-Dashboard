@@ -306,10 +306,10 @@
     font-weight: 700;
   }
   .trend-total-bar {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(110px, 1fr) auto auto;
     align-items: center;
     gap: 18px;
-    flex-wrap: wrap;
     margin-top: 12px;
     padding: 12px 16px;
     background: var(--bg-soft);
@@ -325,11 +325,14 @@
     color: var(--accent);
     font-weight: 700;
     font-size: 1.1rem;
+    text-align: right;
   }
   .trend-total-bar .tb-qty {
     color: var(--qty);
     font-weight: 700;
     font-size: 0.95rem;
+    text-align: right;
+    min-width: 90px;
   }
   .month-group-row td {
     background: #eae5db;
@@ -450,7 +453,16 @@
 
   <div class="panel">
     <div class="panel-title">📄 訂單報表 &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">Order Reports</span></div>
-    <div class="panel-desc">點擊下載 XLSX 原始檔案（優先 23:59 最終版）</div>
+    <div class="panel-desc" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span>點擊下載 XLSX 原始檔案（優先 23:59 最終版）</span>
+      <select id="report-year-filter" class="sku-select" style="min-width:110px;margin-left:auto;">
+        <option value="all">🗓️ 全部年份 All Years</option>
+      </select>
+      <select id="report-month-filter" class="sku-select" style="min-width:110px;">
+        <option value="all">🗓️ 全部月份 All Months</option>
+      </select>
+      <button id="btn-batch-download" class="rc-btn rc-btn-green">📦 Batch 下載</button>
+    </div>
     <div class="table-scroll" id="report-scroll">
       <table>
         <thead id="report-thead"></thead>
@@ -461,9 +473,17 @@
 
   <div class="panel">
     <div class="panel-title">📦 月度合併報表 &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">Monthly Merged Reports</span></div>
-    <div class="panel-desc">每個月份 group 埋一份 XLSX（包含該月所有日嘅訂單明細）</div>
-    <div id="monthly-container" class="monthly-grid">
-      <div class="empty">載入中…</div>
+    <div class="panel-desc" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span>每個月份 group 埋一份 XLSX（包含該月所有日嘅訂單明細）</span>
+      <select id="monthly-year-filter" class="sku-select" style="min-width:110px;margin-left:auto;">
+        <option value="all">🗓️ 全部年份 All Years</option>
+      </select>
+    </div>
+    <div class="table-scroll" id="monthly-scroll">
+      <table>
+        <thead id="monthly-thead"></thead>
+        <tbody id="monthly-tbody"></tbody>
+      </table>
     </div>
   </div>
 
@@ -518,6 +538,10 @@ let fullManifest = [];
 let rangeStart = null;
 let rangeEnd = null;
 let currentTableSkus = [];
+let reportYearFilter = 'all';
+let reportMonthFilter = 'all';
+let monthlyYearFilter = 'all';
+let fullMonthly = [];
 
 function fmtMoney(n) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -539,6 +563,52 @@ function renderStats(manifest) {
   document.getElementById('stat-reports').textContent = String(manifest.length);
 }
 
+function populateReportFilters(manifest) {
+  const yearSel = document.getElementById('report-year-filter');
+  const monthSel = document.getElementById('report-month-filter');
+  if (!yearSel || !monthSel) return;
+  // Years
+  const years = [];
+  manifest.forEach(function(r) {
+    const y = (r.date_iso || '').slice(0, 4);
+    if (y && years.indexOf(y) === -1) years.push(y);
+  });
+  years.sort();
+  yearSel.innerHTML = '<option value="all">🗓️ 全部年份 All Years</option>';
+  years.forEach(function(y) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y + '年';
+    yearSel.appendChild(opt);
+  });
+  yearSel.value = reportYearFilter;
+  // Months (all months across years)
+  const months = [];
+  manifest.forEach(function(r) {
+    const mk = (r.date_iso || '').slice(0, 7);
+    if (mk && months.indexOf(mk) === -1) months.push(mk);
+  });
+  months.sort();
+  monthSel.innerHTML = '<option value="all">🗓️ 全部月份 All Months</option>';
+  months.forEach(function(mk) {
+    const opt = document.createElement('option');
+    opt.value = mk;
+    opt.textContent = mk.slice(0, 4) + '年 ' + parseInt(mk.slice(5, 7), 10) + '月';
+    monthSel.appendChild(opt);
+  });
+  monthSel.value = reportMonthFilter;
+}
+
+function applyReportFilters(manifest) {
+  if (reportYearFilter !== 'all') {
+    manifest = manifest.filter(function(r) { return (r.date_iso || '').slice(0, 4) === reportYearFilter; });
+  }
+  if (reportMonthFilter !== 'all') {
+    manifest = manifest.filter(function(r) { return (r.date_iso || '').slice(0, 7) === reportMonthFilter; });
+  }
+  return manifest;
+}
+
 function renderTable(manifest) {
   const tbody = document.getElementById('report-tbody');
   const thead = document.getElementById('report-thead');
@@ -549,20 +619,27 @@ function renderTable(manifest) {
     tbody.innerHTML = '<tr><td colspan="6" class="empty">暫無報表 No reports yet</td></tr>';
     return;
   }
+  // Apply filters
+  const filtered = applyReportFilters(manifest);
   // Header
   thead.innerHTML = '<tr><th>日期 Date</th><th>GMV</th><th>訂單 Order Lines</th><th>件數 Qty</th><th>版本 Version</th><th>下載 Download</th></tr>';
 
-  // Group by month (manifest is newest-first, so iterate and group)
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">沒有符合 filter 嘅報表 No reports match filters</td></tr>';
+    return;
+  }
+
+  // Group by month (filtered, newest-first)
   const months = [];
   const byMonth = {};
-  manifest.forEach(function(r) {
+  filtered.forEach(function(r) {
     const mk = (r.date_iso || '').slice(0, 7);
     if (!byMonth[mk]) { byMonth[mk] = []; months.push(mk); }
     byMonth[mk].push(r);
   });
 
   // Total rows count for scroll decision (7 days -> scroll)
-  const totalRows = manifest.length;
+  const totalRows = filtered.length;
   if (totalRows > 7) {
     scroll.style.maxHeight = '380px';
     scroll.style.overflowY = 'auto';
@@ -571,7 +648,6 @@ function renderTable(manifest) {
     scroll.style.overflowY = '';
   }
 
-  let totalDays = 0;
   months.forEach(function(mk) {
     const rows = byMonth[mk];
     const y = mk.slice(0, 4), mo = parseInt(mk.slice(5, 7), 10);
@@ -579,7 +655,6 @@ function renderTable(manifest) {
     grp.className = 'month-group-row';
     grp.innerHTML = '<td colspan="6">📅 ' + y + '年 ' + mo + '月 · ' + rows.length + ' 日</td>';
     tbody.appendChild(grp);
-    totalDays += rows.length;
     rows.forEach(function(r) {
       const isFinal = r.timestamp === '23:59';
       const badge = isFinal
@@ -597,6 +672,58 @@ function renderTable(manifest) {
       tbody.appendChild(tr);
     });
   });
+}
+
+function setupReportFilters() {
+  const yearSel = document.getElementById('report-year-filter');
+  const monthSel = document.getElementById('report-month-filter');
+  const batchBtn = document.getElementById('btn-batch-download');
+  if (yearSel) {
+    yearSel.addEventListener('change', function() {
+      reportYearFilter = yearSel.value;
+      renderTable(fullManifest);
+    });
+  }
+  if (monthSel) {
+    monthSel.addEventListener('change', function() {
+      reportMonthFilter = monthSel.value;
+      renderTable(fullManifest);
+    });
+  }
+  if (batchBtn) {
+    batchBtn.addEventListener('click', batchDownloadReports);
+  }
+}
+
+function batchDownloadReports() {
+  if (typeof XLSX === 'undefined') {
+    alert('Excel library not loaded yet — 請稍候再試');
+    return;
+  }
+  const filtered = applyReportFilters(fullManifest);
+  if (filtered.length === 0) {
+    alert('沒有符合 filter 嘅報表 No reports match filters');
+    return;
+  }
+  // Summary sheet: date, GMV, orders, qty, version
+  const rows = [['日期 Date', 'GMV', '訂單行 Order Lines', '件數 Qty', '版本 Version', '檔名 Filename']];
+  filtered.forEach(function(r) {
+    rows.push([
+      r.date_iso || r.date || '—',
+      parseGmv(r.gmv_raw || r.gmv),
+      r.orders != null ? r.orders : 0,
+      r.qty != null ? r.qty : 0,
+      r.timestamp || '—',
+      r.filename || '—'
+    ]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 50 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Order Reports');
+  const rangeLabel = (reportYearFilter !== 'all' ? reportYearFilter : 'AllYears') + '_' +
+    (reportMonthFilter !== 'all' ? reportMonthFilter.replace('-', '') : 'AllMonths');
+  XLSX.writeFile(wb, 'P0068001_Order_Reports_' + rangeLabel + '.xlsx');
 }
 
 function populateMonthFilter(manifest) {
@@ -689,27 +816,74 @@ function renderChart(manifest) {
 }
 
 function renderMonthly(monthly) {
-  const container = document.getElementById('monthly-container');
-  if (!monthly || monthly.length === 0) {
-    container.innerHTML = '<div class="empty">暫無月度報表 No monthly reports yet</div>';
+  fullMonthly = monthly || [];
+  const tbody = document.getElementById('monthly-tbody');
+  const thead = document.getElementById('monthly-thead');
+  const scroll = document.getElementById('monthly-scroll');
+  tbody.innerHTML = '';
+  if (!fullMonthly || fullMonthly.length === 0) {
+    thead.innerHTML = '';
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">暫無月度報表 No monthly reports yet</td></tr>';
     return;
   }
+  // Apply year filter
+  let filtered = fullMonthly;
+  if (monthlyYearFilter !== 'all') {
+    filtered = fullMonthly.filter(function(m) { return (m.month || '').slice(0, 4) === monthlyYearFilter; });
+  }
+  // Header
+  thead.innerHTML = '<tr><th>月份 Month</th><th>GMV</th><th>訂單 Order Lines</th><th>件數 Qty</th><th>下載 Download</th></tr>';
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">沒有符合 filter 嘅月份 No months match filter</td></tr>';
+    return;
+  }
+  // Scroll if more than 12 months
+  if (filtered.length > 12) {
+    scroll.style.maxHeight = '420px';
+    scroll.style.overflowY = 'auto';
+  } else {
+    scroll.style.maxHeight = '';
+    scroll.style.overflowY = '';
+  }
   let html = '';
-  monthly.forEach(function(m) {
+  filtered.forEach(function(m) {
+    const y = (m.month || '').slice(0, 4);
+    const mo = parseInt((m.month || '').slice(5, 7), 10);
     html +=
-      '<div class="monthly-card">' +
-      '<div class="m-month">📅 ' + m.label + '</div>' +
-      '<div class="m-gmv">' + m.gmv + '</div>' +
-      '<div class="m-stats">' +
-      '📆 <strong>' + m.days + '</strong> 日 Days<br>' +
-      '📦 <strong>' + (m.orders != null ? m.orders.toLocaleString() : '—') + '</strong> 訂單行 Order Lines<br>' +
-      '🧮 <strong>' + (m.qty != null ? Number(m.qty).toLocaleString() : '—') + '</strong> 件 Qty' +
-      '</div>' +
-      '<a class="dl-btn" href="reports/monthly/' + encodeURIComponent(m.filename) + '" download>' +
-      '📥 下載月度報表 XLSX</a>' +
-      '</div>';
+      '<tr>' +
+      '<td><span class="date">📅 ' + y + '年 ' + mo + '月 · ' + m.days + ' 日</span></td>' +
+      '<td><span class="gmv-val">' + (m.gmv || '—') + '</span></td>' +
+      '<td>' + (m.orders != null ? Number(m.orders).toLocaleString() : '—') + '</td>' +
+      '<td>' + (m.qty != null ? Number(m.qty).toLocaleString() : '—') + '</td>' +
+      '<td><a class="dl-btn" href="reports/monthly/' + encodeURIComponent(m.filename) + '" download>' +
+      '📥 下載 XLSX</a></td>' +
+      '</tr>';
   });
-  container.innerHTML = html;
+  tbody.innerHTML = html;
+}
+
+function setupMonthlyFilter() {
+  const yearSel = document.getElementById('monthly-year-filter');
+  if (!yearSel) return;
+  // Years from monthly data
+  const years = [];
+  fullMonthly.forEach(function(m) {
+    const y = (m.month || '').slice(0, 4);
+    if (y && years.indexOf(y) === -1) years.push(y);
+  });
+  years.sort();
+  yearSel.innerHTML = '<option value="all">🗓️ 全部年份 All Years</option>';
+  years.forEach(function(y) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y + '年';
+    yearSel.appendChild(opt);
+  });
+  yearSel.value = monthlyYearFilter;
+  yearSel.addEventListener('change', function() {
+    monthlyYearFilter = yearSel.value;
+    renderMonthly(fullMonthly);
+  });
 }
 
 function buildSkuOptions(skus) {
@@ -1055,6 +1229,8 @@ async function load() {
     const manifest = await resp.json();
     fullManifest = manifest;
     populateMonthFilter(manifest);
+    populateReportFilters(manifest);
+    setupReportFilters();
     renderStats(manifest);
     renderTable(manifest);
     renderChart(manifest);
@@ -1069,8 +1245,9 @@ async function load() {
     const mresp = await fetch(MONTHLY_URL + '?v=' + Date.now());
     if (mresp.ok) {
       renderMonthly(await mresp.json());
+      setupMonthlyFilter();
     } else {
-      document.getElementById('monthly-container').innerHTML = '<div class="empty">暫無月度報表 No monthly reports yet</div>';
+      document.getElementById('monthly-tbody').innerHTML = '<tr><td colspan="5" class="empty">暫無月度報表 No monthly reports yet</td></tr>';
     }
     // Load sales trend + setup controls
     setupTrendControls();

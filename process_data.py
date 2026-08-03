@@ -51,7 +51,7 @@ def extract_stats(path):
 
 
 def read_orders(path):
-    """Read per-SKU order lines: list of (date_iso, sku_id, sku_name, qty, gmv)."""
+    """Read per-SKU order lines: list of (date_iso, sku_id, brand_cn, sku_name, qty, gmv)."""
     wb = openpyxl.load_workbook(path, data_only=True)
     ws = wb.active
     rows = []
@@ -59,18 +59,22 @@ def read_orders(path):
         sku = ws.cell(row=r, column=18).value
         if sku is None:
             continue
+        sku_str = str(sku).strip()
+        # Skip header/legend rows that leak into data (e.g. 'SKU ID')
+        if sku_str.lower() in ("sku id", "sku", "sku_id") or sku_str.startswith("SKU"):
+            continue
         qty = ws.cell(row=r, column=24).value or 0
         gmv = ws.cell(row=r, column=27).value or 0
         if not isinstance(qty, (int, float)):
             qty = 0
         if not isinstance(gmv, (int, float)):
             gmv = 0
-        name_cn = ws.cell(row=r, column=22).value or ws.cell(row=r, column=21).value or str(sku)
+        name_cn = ws.cell(row=r, column=22).value or ws.cell(row=r, column=21).value or sku_str
+        brand_cn = ws.cell(row=r, column=20).value or ws.cell(row=r, column=19).value or ""
         # Normalize SKU: prepend store prefix P0068001_S_ if not already present
-        sku_str = str(sku)
         if not sku_str.startswith("P0068001_S_"):
             sku_str = "P0068001_S_" + sku_str
-        rows.append((sku_str, str(name_cn), float(qty), float(gmv)))
+        rows.append((sku_str, str(brand_cn), str(name_cn), float(qty), float(gmv)))
     return rows
 
 
@@ -196,12 +200,12 @@ def main():
         json.dump(monthly_meta, f, ensure_ascii=False, indent=2)
 
     # Build Sales Trend data (by SKU by daily GMV & QTY)
-    sku_data = {}   # sku_id -> {name, by_date: {date: [gmv, qty]}}
+    sku_data = {}   # sku_id -> {brand, name, by_date: {date: [gmv, qty]}}
     dates = sorted(by_date.keys())
     for date_iso, fpath in by_date.items():
-        for sku, name, qty, gmv in read_orders(fpath):
+        for sku, brand, name, qty, gmv in read_orders(fpath):
             if sku not in sku_data:
-                sku_data[sku] = {"name": name, "by_date": {}}
+                sku_data[sku] = {"brand": brand, "name": name, "by_date": {}}
             d = sku_data[sku]["by_date"]
             if date_iso not in d:
                 d[date_iso] = [0.0, 0]
@@ -219,6 +223,7 @@ def main():
             qty_arr.append(v[1])
         sku_list.append({
             "sku": sku,
+            "brand": info["brand"],
             "name": info["name"],
             "gmv": gmv_arr,
             "qty": qty_arr,

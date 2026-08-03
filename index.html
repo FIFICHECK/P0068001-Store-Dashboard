@@ -307,7 +307,7 @@
   }
   .trend-total-bar {
     display: grid;
-    grid-template-columns: minmax(110px, 1fr) auto auto;
+    grid-template-columns: minmax(110px, 1fr) minmax(70px, 0.6fr) minmax(180px, 1.4fr) auto auto;
     align-items: center;
     gap: 18px;
     margin-top: 12px;
@@ -320,6 +320,19 @@
     font-weight: 700;
     color: var(--text);
     font-size: 0.9rem;
+  }
+  .trend-total-bar .tb-spacer {
+    /* empty grid cell to keep alignment with Brand/Name columns */
+  }
+  .trend-table td.brand-cell {
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .trend-table td.name-cell {
+    color: var(--text);
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .trend-total-bar .tb-gmv {
     color: var(--accent);
@@ -696,34 +709,24 @@ function setupReportFilters() {
 }
 
 function batchDownloadReports() {
-  if (typeof XLSX === 'undefined') {
-    alert('Excel library not loaded yet — 請稍候再試');
-    return;
-  }
   const filtered = applyReportFilters(fullManifest);
   if (filtered.length === 0) {
     alert('沒有符合 filter 嘅報表 No reports match filters');
     return;
   }
-  // Summary sheet: date, GMV, orders, qty, version
-  const rows = [['日期 Date', 'GMV', '訂單行 Order Lines', '件數 Qty', '版本 Version', '檔名 Filename']];
+  // Download each daily XLSX file (no need to click each one)
+  let count = 0;
   filtered.forEach(function(r) {
-    rows.push([
-      r.date_iso || r.date || '—',
-      parseGmv(r.gmv_raw || r.gmv),
-      r.orders != null ? r.orders : 0,
-      r.qty != null ? r.qty : 0,
-      r.timestamp || '—',
-      r.filename || '—'
-    ]);
+    if (!r.filename) return;
+    const a = document.createElement('a');
+    a.href = 'reports/order_reports/' + encodeURIComponent(r.filename);
+    a.download = r.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    count++;
   });
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 50 }];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Order Reports');
-  const rangeLabel = (reportYearFilter !== 'all' ? reportYearFilter : 'AllYears') + '_' +
-    (reportMonthFilter !== 'all' ? reportMonthFilter.replace('-', '') : 'AllMonths');
-  XLSX.writeFile(wb, 'P0068001_Order_Reports_' + rangeLabel + '.xlsx');
+  alert('已開始下載 ' + count + ' 份每日報表 XLSX（如瀏覽器詢問，請允許多個下載）');
 }
 
 function populateMonthFilter(manifest) {
@@ -897,7 +900,7 @@ function buildSkuOptions(skus) {
   skus.forEach(function(s) {
     const opt = document.createElement('option');
     opt.value = s.sku;
-    opt.textContent = displaySku(s.sku) + ' — ' + s.name;
+    opt.textContent = displaySku(s.sku);
     select.appendChild(opt);
   });
 }
@@ -1064,8 +1067,8 @@ function renderRangeSummary() {
 }
 
 function displaySku(sku) {
-  // Strip P0068001_S_ prefix for display, keep full for link
-  return String(sku).replace(/^P0068001_S_/, '');
+  // Keep full SKU with P0068001_S_ prefix (user wants prefix shown)
+  return String(sku);
 }
 
 function renderTrendTable(skus) {
@@ -1081,8 +1084,8 @@ function renderTrendTable(skus) {
   const [sIdx, eIdx] = getRangeIndices();
   const rangeDates = trendData.dates.slice(sIdx, eIdx + 1);
 
-  // Header: SKU | GMV | QTY
-  thead.innerHTML = '<tr><th style="min-width:110px;">SKU</th><th style="text-align:right;">GMV（' + rangeDates.length + '日）</th><th style="text-align:right;">QTY</th></tr>';
+  // Header: SKU | Brand | SKU Name (CHI) | GMV | QTY
+  thead.innerHTML = '<tr><th style="min-width:110px;">SKU</th><th style="min-width:70px;">Brand name (中文)</th><th style="min-width:180px;">SKU Name (CHI)</th><th style="text-align:right;">GMV（' + rangeDates.length + '日）</th><th style="text-align:right;">QTY</th></tr>';
 
   let rowsHtml = '';
   let allGmv = 0, allQty = 0;
@@ -1096,15 +1099,19 @@ function renderTrendTable(skus) {
     allQty += totalQty;
     rowsHtml += '<tr>';
     rowsHtml += '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/' + encodeURIComponent(s.sku) + '" target="_blank" rel="noopener">' + displaySku(s.sku) + '</a></td>';
+    rowsHtml += '<td class="brand-cell">' + escapeHtml(s.brand || '') + '</td>';
+    rowsHtml += '<td class="name-cell">' + escapeHtml(s.name || '') + '</td>';
     rowsHtml += '<td class="num total-gmv">' + (totalGmv > 0 ? fmtMoney(totalGmv) : '—') + '</td>';
     rowsHtml += '<td class="num total-qty">' + (totalQty > 0 ? totalQty.toLocaleString() : '—') + '</td>';
     rowsHtml += '</tr>';
   });
   tbody.innerHTML = rowsHtml;
 
-  // Fixed total bar (outside scroll)
+  // Fixed total bar (outside scroll) - aligned 5 columns
   document.getElementById('trend-total-bar').innerHTML =
     '<span class="tb-label">📊 總計 Total</span>' +
+    '<span class="tb-spacer"></span>' +
+    '<span class="tb-spacer"></span>' +
     '<span class="tb-gmv">' + fmtMoney(allGmv) + '</span>' +
     '<span class="tb-qty">' + allQty.toLocaleString() + ' 件</span>';
 
@@ -1121,7 +1128,7 @@ function exportTrendExcel() {
   }
   const [sIdx, eIdx] = getRangeIndices();
   const rangeDates = trendData.dates.slice(sIdx, eIdx + 1);
-  const rows = [['SKU', 'GMV', 'QTY', '日期範圍', rangeDates[0] + ' 至 ' + rangeDates[rangeDates.length - 1]]];
+  const rows = [['SKU', 'Brand name (中文)', 'SKU Name (CHI)', 'GMV', 'QTY', '日期範圍', rangeDates[0] + ' 至 ' + rangeDates[rangeDates.length - 1]]];
   const exportSkus = (currentTableSkus && currentTableSkus.length > 0) ? currentTableSkus : trendData.skus;
   exportSkus.forEach(function(s) {
     let totalGmv = 0, totalQty = 0;
@@ -1129,7 +1136,7 @@ function exportTrendExcel() {
       totalGmv += (s.gmv[i] || 0);
       totalQty += (s.qty[i] || 0);
     }
-    rows.push([s.sku, Math.round(totalGmv * 100) / 100, totalQty]);
+    rows.push([s.sku, s.brand || '', s.name || '', Math.round(totalGmv * 100) / 100, totalQty]);
   });
   // Append total row
   let allGmv = 0, allQty = 0;
@@ -1139,10 +1146,10 @@ function exportTrendExcel() {
       allQty += (s.qty[i] || 0);
     }
   });
-  rows.push(['總計 Total', Math.round(allGmv * 100) / 100, allQty]);
+  rows.push(['總計 Total', '', '', Math.round(allGmv * 100) / 100, allQty]);
   const ws = XLSX.utils.aoa_to_sheet(rows);
   // Column widths
-  ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 10 }, { wch: 30 }];
+  ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 50 }, { wch: 14 }, { wch: 10 }, { wch: 30 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Sales Trend');
   const fname = 'P0068001_Sales_Trend_' + rangeDates[0].replace(/-/g, '') + '_' + rangeDates[rangeDates.length - 1].replace(/-/g, '') + '.xlsx';

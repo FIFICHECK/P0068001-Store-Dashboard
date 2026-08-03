@@ -98,6 +98,7 @@
 
   .table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   table { width: 100%; border-collapse: collapse; min-width: 560px; }
+  .report-table { table-layout: fixed; }
   thead th {
     text-align: left;
     font-size: 0.78rem;
@@ -504,7 +505,15 @@
       <button id="btn-batch-download" class="rc-btn rc-btn-green">📦 Batch 下載</button>
     </div>
     <div class="table-scroll" id="report-scroll">
-      <table>
+      <table class="report-table">
+        <colgroup>
+          <col style="width:17%">
+          <col style="width:15%">
+          <col style="width:17%">
+          <col style="width:11%">
+          <col style="width:16%">
+          <col style="width:24%">
+        </colgroup>
         <thead id="report-thead"></thead>
         <tbody id="report-tbody"></tbody>
       </table>
@@ -520,7 +529,15 @@
       </select>
     </div>
     <div class="table-scroll" id="monthly-scroll">
-      <table>
+      <table class="report-table">
+        <colgroup>
+          <col style="width:17%">
+          <col style="width:15%">
+          <col style="width:17%">
+          <col style="width:11%">
+          <col style="width:16%">
+          <col style="width:24%">
+        </colgroup>
         <thead id="monthly-thead"></thead>
         <tbody id="monthly-tbody"></tbody>
       </table>

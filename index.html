@@ -206,6 +206,76 @@
   }
   .trend-summary .ts-item { color: var(--text-dim); }
   .trend-summary .ts-item strong { color: var(--text); font-weight: 700; }
+  .trend-table-block { margin-top: 26px; }
+  .trend-table-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .tt-title { font-size: 0.95rem; font-weight: 700; }
+  .table-count {
+    background: var(--bg-hover);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    color: var(--text-dim);
+  }
+  .trend-table-scroll {
+    width: 100%;
+    max-height: 420px;
+    overflow-y: auto;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .trend-table {
+    width: 100%;
+    min-width: 720px;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+  }
+  .trend-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #1b1f28;
+    color: var(--text-dim);
+    font-weight: 600;
+    text-align: left;
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .trend-table thead th.date-group {
+    text-align: center;
+    background: #21262f;
+    color: var(--text);
+  }
+  .trend-table tbody td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #232833;
+    white-space: nowrap;
+  }
+  .trend-table tbody tr:hover { background: var(--bg-hover); }
+  .trend-table td.sku-cell {
+    font-weight: 600;
+    color: var(--text);
+    position: sticky;
+    left: 0;
+    background: var(--bg-card);
+    z-index: 1;
+  }
+  .trend-table tbody tr:hover td.sku-cell { background: var(--bg-hover); }
+  .trend-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .trend-table td.gmv-cell { color: var(--accent-light); }
+  .trend-table td.qty-cell { color: #3498db; }
+  .trend-table td.total-gmv { font-weight: 700; color: var(--accent-light); }
+  .trend-table td.total-qty { font-weight: 700; color: #3498db; }
 
   @media (max-width: 480px) {
     h1 { font-size: 1.1rem; }
@@ -275,6 +345,18 @@
     <div class="trend-summary" id="trend-summary"></div>
     <div class="chart-wrap"><canvas id="skuGmvChart"></canvas></div>
     <div class="chart-wrap" style="height:240px;margin-top:20px;"><canvas id="skuQtyChart"></canvas></div>
+    <div class="trend-table-block">
+      <div class="trend-table-header">
+        <span class="tt-title">📋 全部 SKU 明細 &nbsp;<span style="color:var(--text-dim);font-weight:400;font-size:0.8rem;">All SKUs · Daily GMV &amp; QTY</span></span>
+        <span id="trend-table-count" class="table-count"></span>
+      </div>
+      <div class="trend-table-scroll">
+        <table class="trend-table">
+          <thead id="trend-thead"></thead>
+          <tbody id="trend-tbody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <div class="panel">
@@ -544,8 +626,71 @@ function loadTrend() {
     currentSku = trendData.skus[0];
     document.getElementById('sku-select').value = currentSku.sku;
     renderSkuCharts(currentSku);
+    renderTrendTable(trendData.skus);
   };
   document.body.appendChild(script);
+}
+
+function renderTrendTable(skus) {
+  const thead = document.getElementById('trend-thead');
+  const tbody = document.getElementById('trend-tbody');
+  if (!trendData || !skus || skus.length === 0) {
+    thead.innerHTML = '';
+    tbody.innerHTML = '<tr><td class="empty" style="padding:24px;">暫無數據 No data</td></tr>';
+    document.getElementById('trend-table-count').textContent = '0 SKUs';
+    return;
+  }
+  const dates = trendData.dates;
+  const dateLabels = dates.map(function(d) { return d.slice(5); });
+
+  // Two-row header: group row (dates span GMV+QTY) + sub row (GMV / QTY)
+  let groupHtml = '<th rowspan="2" style="min-width:110px;">SKU</th><th rowspan="2" style="min-width:200px;">名稱 Name</th>';
+  dates.forEach(function(d) {
+    groupHtml += '<th colspan="2" class="date-group">' + d.slice(5) + '</th>';
+  });
+  groupHtml += '<th rowspan="2">總 GMV</th><th rowspan="2">總 QTY</th>';
+  thead.innerHTML = groupHtml;
+
+  let subHtml = '';
+  dates.forEach(function() {
+    subHtml += '<th style="text-align:right;">GMV</th><th style="text-align:right;">QTY</th>';
+  });
+  // Append sub row to thead (2nd tr)
+  const subRow = document.createElement('tr');
+  subRow.innerHTML = subHtml;
+  thead.appendChild(subRow);
+
+  // Body rows
+  let rowsHtml = '';
+  skus.forEach(function(s) {
+    rowsHtml += '<tr>';
+    rowsHtml += '<td class="sku-cell">' + s.sku + '</td>';
+    rowsHtml += '<td>' + escapeHtml(s.name) + '</td>';
+    let totalGmv = 0, totalQty = 0;
+    for (let i = 0; i < dates.length; i++) {
+      const g = s.gmv[i] || 0;
+      const q = s.qty[i] || 0;
+      totalGmv += g;
+      totalQty += q;
+      rowsHtml += '<td class="num gmv-cell">' + (g > 0 ? fmtMoney(g) : '—') + '</td>';
+      rowsHtml += '<td class="num qty-cell">' + (q > 0 ? q : '—') + '</td>';
+    }
+    rowsHtml += '<td class="num total-gmv">' + fmtMoney(totalGmv) + '</td>';
+    rowsHtml += '<td class="num total-qty">' + totalQty.toLocaleString() + '</td>';
+    rowsHtml += '</tr>';
+  });
+  tbody.innerHTML = rowsHtml;
+
+  document.getElementById('trend-table-count').textContent =
+    skus.length + ' SKUs · ' + dates.length + ' 日 days';
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function setupTrendControls() {
@@ -567,6 +712,8 @@ function setupTrendControls() {
     } else {
       select.innerHTML = '<option value="">無匹配 No match</option>';
     }
+    // Update table with filtered SKUs (keep table showing matches)
+    renderTrendTable(filtered.length > 0 ? filtered : trendData.skus);
   });
 }
 

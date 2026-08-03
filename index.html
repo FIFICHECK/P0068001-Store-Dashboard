@@ -7,51 +7,55 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
   :root {
-    --bg: #0f1115;
-    --bg-card: #171a21;
-    --bg-hover: #1e222c;
-    --border: #2a2f3a;
-    --text: #e0e0e0;
-    --text-dim: #9aa3b2;
-    --accent: #c0392b;
-    --accent-light: #e74c3c;
-    --green: #27ae60;
-    --yellow: #f1c40f;
+    --bg: #f7f4ee;
+    --bg-card: #ffffff;
+    --bg-hover: #f3efe8;
+    --bg-soft: #faf8f4;
+    --border: #e2ddd3;
+    --text: #2f2f2f;
+    --text-dim: #8a857e;
+    --accent: #c1002e;
+    --accent-dark: #9e0026;
+    --green: #4a7c59;
+    --yellow: #b58900;
+    --qty: #5b6770;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang HK", "Microsoft JhengHei", sans-serif;
+    font-family: "Helvetica Neue", Helvetica, Arial, "PingFang HK", "Microsoft JhengHei", sans-serif;
     min-height: 100vh;
   }
-  .container { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  .container { max-width: 1480px; margin: 0 auto; padding: 24px 20px 60px; }
   header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 12px;
-    padding: 18px 0 22px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 24px;
+    padding: 14px 0 18px;
+    border-bottom: 2px solid var(--accent);
+    margin-bottom: 26px;
   }
   .logo {
-    width: 44px; height: 44px;
     background: var(--accent);
-    border-radius: 12px;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 800; font-size: 20px; color: #fff;
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: 2px;
     flex-shrink: 0;
   }
-  .title-block { display: flex; align-items: center; gap: 14px; }
-  h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: 0.3px; }
-  .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-top: 3px; }
+  .title-block { display: flex; align-items: center; gap: 16px; }
+  h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: 0.5px; color: var(--text); }
+  .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-top: 3px; letter-spacing: 0.3px; }
   .store-badge {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 8px 16px;
+    border-radius: 4px;
+    padding: 8px 18px;
     font-size: 0.85rem;
     color: var(--text-dim);
   }
@@ -59,34 +63,36 @@
 
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 14px;
-    margin-bottom: 26px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-bottom: 28px;
   }
   .stat-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 18px 20px;
+    border-radius: 4px;
+    padding: 20px 24px;
   }
-  .stat-label { color: var(--text-dim); font-size: 0.8rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
-  .stat-value { font-size: 1.6rem; font-weight: 700; letter-spacing: 0.5px; }
-  .stat-value.money { color: var(--accent-light); }
+  .stat-label { color: var(--text-dim); font-size: 0.8rem; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; letter-spacing: 0.3px; }
+  .stat-value { font-size: 1.7rem; font-weight: 700; letter-spacing: 0.5px; color: var(--text); }
+  .stat-value.money { color: var(--accent); }
   .stat-sub { color: var(--text-dim); font-size: 0.78rem; margin-top: 6px; }
 
   .panel {
     background: var(--bg-card);
     border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 22px;
-    margin-bottom: 26px;
+    border-radius: 4px;
+    padding: 24px 26px;
+    margin-bottom: 28px;
   }
   .panel-title {
-    font-size: 1.05rem; font-weight: 700;
+    font-size: 1.1rem; font-weight: 700;
     margin-bottom: 4px;
     display: flex; align-items: center; gap: 8px;
+    color: var(--text);
+    letter-spacing: 0.3px;
   }
-  .panel-desc { color: var(--text-dim); font-size: 0.8rem; margin-bottom: 18px; }
+  .panel-desc { color: var(--text-dim); font-size: 0.82rem; margin-bottom: 20px; }
   .chart-wrap { position: relative; height: 320px; }
 
   .table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -97,30 +103,32 @@
     color: var(--text-dim);
     font-weight: 600;
     padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid var(--border);
     white-space: nowrap;
+    letter-spacing: 0.3px;
   }
   tbody td {
     padding: 12px;
     font-size: 0.9rem;
-    border-bottom: 1px solid #232833;
+    border-bottom: 1px solid var(--border);
     white-space: nowrap;
+    color: var(--text);
   }
-  tbody tr:hover { background: var(--bg-hover); }
-  td .date { font-weight: 700; }
-  td .gmv-val { color: var(--accent-light); font-weight: 600; }
+  tbody tr:hover { background: var(--bg-soft); }
+  td .date { font-weight: 700; color: var(--text); }
+  td .gmv-val { color: var(--accent); font-weight: 600; }
   .badge-final {
-    background: rgba(39, 174, 96, 0.15);
+    background: rgba(74, 124, 89, 0.12);
     color: var(--green);
-    border-radius: 6px;
+    border-radius: 4px;
     padding: 2px 8px;
     font-size: 0.72rem;
     font-weight: 600;
   }
   .badge-partial {
-    background: rgba(241, 196, 15, 0.12);
+    background: rgba(181, 137, 0, 0.12);
     color: var(--yellow);
-    border-radius: 6px;
+    border-radius: 4px;
     padding: 2px 8px;
     font-size: 0.72rem;
     font-weight: 600;
@@ -130,15 +138,15 @@
     background: var(--accent);
     color: #fff;
     border: none;
-    border-radius: 8px;
-    padding: 7px 14px;
+    border-radius: 4px;
+    padding: 7px 16px;
     font-size: 0.8rem;
     font-weight: 600;
     text-decoration: none;
     cursor: pointer;
     transition: background 0.15s;
   }
-  .dl-btn:hover { background: var(--accent-light); }
+  .dl-btn:hover { background: var(--accent-dark); }
 
   footer {
     text-align: center;
@@ -151,34 +159,34 @@
 
   .monthly-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
   }
   .monthly-card {
-    background: var(--bg-hover);
+    background: var(--bg-soft);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 16px 18px;
+    border-radius: 4px;
+    padding: 18px 20px;
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
-  .monthly-card .m-month { font-size: 1.05rem; font-weight: 700; }
-  .monthly-card .m-stats { color: var(--text-dim); font-size: 0.8rem; line-height: 1.6; }
+  .monthly-card .m-month { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+  .monthly-card .m-stats { color: var(--text-dim); font-size: 0.8rem; line-height: 1.7; }
   .monthly-card .m-stats strong { color: var(--text); }
-  .monthly-card .m-gmv { color: var(--accent-light); font-weight: 700; font-size: 1.15rem; }
+  .monthly-card .m-gmv { color: var(--accent); font-weight: 700; font-size: 1.2rem; }
   .trend-controls {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
-    margin-bottom: 16px;
+    margin-bottom: 18px;
   }
   .sku-search {
     flex: 1;
     min-width: 200px;
-    background: var(--bg-hover);
+    background: var(--bg-soft);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 4px;
     color: var(--text);
     padding: 10px 14px;
     font-size: 0.9rem;
@@ -186,40 +194,40 @@
   }
   .sku-search:focus { border-color: var(--accent); }
   .sku-select {
-    background: var(--bg-hover);
+    background: var(--bg-soft);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 4px;
     color: var(--text);
     padding: 10px 14px;
     font-size: 0.9rem;
-    min-width: 260px;
+    min-width: 280px;
     max-width: 100%;
     outline: none;
   }
   .sku-select:focus { border-color: var(--accent); }
   .trend-summary {
     display: flex;
-    gap: 18px;
+    gap: 22px;
     flex-wrap: wrap;
-    margin-bottom: 16px;
+    margin-bottom: 18px;
     font-size: 0.85rem;
   }
   .trend-summary .ts-item { color: var(--text-dim); }
   .trend-summary .ts-item strong { color: var(--text); font-weight: 700; }
-  .trend-table-block { margin-top: 26px; }
+  .trend-table-block { margin-top: 28px; }
   .trend-table-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 8px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
   }
-  .tt-title { font-size: 0.95rem; font-weight: 700; }
+  .tt-title { font-size: 0.98rem; font-weight: 700; color: var(--text); }
   .table-count {
-    background: var(--bg-hover);
+    background: var(--bg-soft);
     border: 1px solid var(--border);
-    border-radius: 14px;
+    border-radius: 4px;
     padding: 4px 12px;
     font-size: 0.75rem;
     color: var(--text-dim);
@@ -231,7 +239,7 @@
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 4px;
   }
   .trend-table {
     width: 100%;
@@ -243,25 +251,27 @@
     position: sticky;
     top: 0;
     z-index: 2;
-    background: #1b1f28;
+    background: #f1ede5;
     color: var(--text-dim);
     font-weight: 600;
     text-align: left;
     padding: 9px 10px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 2px solid var(--border);
     white-space: nowrap;
+    letter-spacing: 0.2px;
   }
   .trend-table thead th.date-group {
     text-align: center;
-    background: #21262f;
+    background: #eae5db;
     color: var(--text);
   }
   .trend-table tbody td {
     padding: 8px 10px;
-    border-bottom: 1px solid #232833;
+    border-bottom: 1px solid var(--border);
     white-space: nowrap;
+    color: var(--text);
   }
-  .trend-table tbody tr:hover { background: var(--bg-hover); }
+  .trend-table tbody tr:hover { background: var(--bg-soft); }
   .trend-table td.sku-cell {
     font-weight: 600;
     color: var(--text);
@@ -270,16 +280,16 @@
     background: var(--bg-card);
     z-index: 1;
   }
-  .trend-table tbody tr:hover td.sku-cell { background: var(--bg-hover); }
+  .trend-table tbody tr:hover td.sku-cell { background: var(--bg-soft); }
   .trend-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .trend-table td.gmv-cell { color: var(--accent-light); }
-  .trend-table td.qty-cell { color: #3498db; }
-  .trend-table td.total-gmv { font-weight: 700; color: var(--accent-light); }
-  .trend-table td.total-qty { font-weight: 700; color: #3498db; }
+  .trend-table td.gmv-cell { color: var(--accent); }
+  .trend-table td.qty-cell { color: var(--qty); }
+  .trend-table td.total-gmv { font-weight: 700; color: var(--accent); }
+  .trend-table td.total-qty { font-weight: 700; color: var(--qty); }
 
   @media (max-width: 480px) {
     h1 { font-size: 1.1rem; }
-    .stat-value { font-size: 1.3rem; }
+    .stat-value { font-size: 1.35rem; }
     .panel { padding: 16px; }
     .chart-wrap { height: 250px; }
   }
@@ -289,7 +299,7 @@
 <div class="container">
   <header>
     <div class="title-block">
-      <div class="logo">MU</div>
+      <div class="logo">MUJI</div>
       <div>
         <h1>P0068001 Store Dashboard</h1>
         <div class="subtitle">每日訂單報表 Daily Order Report</div>
@@ -454,8 +464,8 @@ function renderChart(manifest) {
       datasets: [{
         label: 'GMV',
         data: data,
-        backgroundColor: 'rgba(231, 76, 60, 0.75)',
-        borderColor: 'rgba(231, 76, 60, 1)',
+        backgroundColor: 'rgba(193, 0, 46, 0.75)',
+        borderColor: 'rgba(193, 0, 46, 1)',
         borderWidth: 1,
         borderRadius: 6
       }]
@@ -473,15 +483,15 @@ function renderChart(manifest) {
       },
       scales: {
         x: {
-          ticks: { color: '#9aa3b2' },
-          grid: { color: '#232833' }
+          ticks: { color: '#8a857e' },
+          grid: { color: '#e2ddd3' }
         },
         y: {
           ticks: {
-            color: '#9aa3b2',
+            color: '#8a857e',
             callback: function(v) { return '$' + (v / 1000).toFixed(0) + 'k'; }
           },
-          grid: { color: '#232833' }
+          grid: { color: '#e2ddd3' }
         }
       }
     }
@@ -556,8 +566,8 @@ function renderSkuCharts(sku) {
       datasets: [{
         label: 'GMV',
         data: gmvData,
-        backgroundColor: 'rgba(231, 76, 60, 0.75)',
-        borderColor: 'rgba(231, 76, 60, 1)',
+        backgroundColor: 'rgba(193, 0, 46, 0.75)',
+        borderColor: 'rgba(193, 0, 46, 1)',
         borderWidth: 1,
         borderRadius: 6
       }]
@@ -566,15 +576,15 @@ function renderSkuCharts(sku) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        title: { display: true, text: '💰 每日 GMV · Daily GMV', color: '#e0e0e0', font: { size: 14 } },
+        title: { display: true, text: '💰 每日 GMV · Daily GMV', color: '#2f2f2f', font: { size: 14 } },
         legend: { display: false },
         tooltip: {
           callbacks: { label: function(ct) { return ' GMV: ' + fmtMoney(ct.parsed.y); } }
         }
       },
       scales: {
-        x: { ticks: { color: '#9aa3b2' }, grid: { color: '#232833' } },
-        y: { ticks: { color: '#9aa3b2' }, grid: { color: '#232833' } }
+        x: { ticks: { color: '#8a857e' }, grid: { color: '#e2ddd3' } },
+        y: { ticks: { color: '#8a857e' }, grid: { color: '#e2ddd3' } }
       }
     }
   });
@@ -587,8 +597,8 @@ function renderSkuCharts(sku) {
       datasets: [{
         label: 'QTY',
         data: qtyData,
-        backgroundColor: 'rgba(52, 152, 219, 0.2)',
-        borderColor: 'rgba(52, 152, 219, 1)',
+        backgroundColor: 'rgba(91, 103, 112, 0.2)',
+        borderColor: 'rgba(91, 103, 112, 1)',
         borderWidth: 2,
         tension: 0.3,
         fill: true,
@@ -599,15 +609,15 @@ function renderSkuCharts(sku) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        title: { display: true, text: '📦 每日數量 · Daily QTY', color: '#e0e0e0', font: { size: 14 } },
+        title: { display: true, text: '📦 每日數量 · Daily QTY', color: '#2f2f2f', font: { size: 14 } },
         legend: { display: false },
         tooltip: {
           callbacks: { label: function(ct) { return ' QTY: ' + ct.parsed.y.toLocaleString(); } }
         }
       },
       scales: {
-        x: { ticks: { color: '#9aa3b2' }, grid: { color: '#232833' } },
-        y: { ticks: { color: '#9aa3b2' }, grid: { color: '#232833' } }
+        x: { ticks: { color: '#8a857e' }, grid: { color: '#e2ddd3' } },
+        y: { ticks: { color: '#8a857e' }, grid: { color: '#e2ddd3' } }
       }
     }
   });

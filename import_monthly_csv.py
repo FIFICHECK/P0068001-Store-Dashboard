@@ -12,6 +12,7 @@ import io
 import json
 import os
 import sys
+import calendar
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE, "data")
@@ -96,13 +97,17 @@ def main():
         if m in existing:
             continue
         t = month_totals[m]
+        # days = actual days in that month (monthly CSV covers every day of the month)
+        year = int(m[:4])
+        month = int(m[5:7])
+        days = calendar.monthrange(year, month)[1]
         new_entries.append({
             "month": m,
             "label": MONTH_LABELS[i],
             "gmv": f"${t['gmv']:,.2f}",
             "orders": t["orders"],
             "qty": t["qty"],
-            "days": 0,  # no daily breakdown, monthly aggregate only
+            "days": days,
             "filename": "",  # no XLSX available for these months
         })
     meta = new_entries + meta  # newest first: 2026-07 ... 2026-01, then 2026-08

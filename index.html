@@ -546,7 +546,12 @@
 
   <div class="panel">
     <div class="panel-title">📊 Sales Trend &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">by SKU · Daily GMV &amp; QTY</span></div>
-    <div class="panel-desc">揀選 SKU 睇每日 GMV &amp; 數量走勢（點擊下方 SKU 連結可睇 HKTVmall 產品頁）</div>
+    <div class="panel-desc" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span>揀選 SKU 睇每日 GMV &amp; 數量走勢（點擊下方 SKU 連結可睇 HKTVmall 產品頁）</span>
+      <select id="trend-month-filter" class="sku-select" style="min-width:150px;margin-left:auto;">
+        <option value="daily">🗓️ 最新月份（每日）Daily</option>
+      </select>
+    </div>
     <div class="trend-summary" id="trend-summary"></div>
     <div class="chart-wrap"><canvas id="skuGmvChart"></canvas></div>
     <div class="chart-wrap" style="height:240px;margin-top:20px;"><canvas id="skuQtyChart"></canvas></div>
@@ -566,7 +571,7 @@
     <div class="range-summary" id="range-summary"></div>
     <div class="trend-table-block">
       <div class="trend-table-header">
-        <span class="tt-title">📋 全部 SKU 明細 &nbsp;<span style="color:var(--text-dim);font-weight:400;font-size:0.8rem;">All SKUs · Daily GMV &amp; QTY</span></span>
+        <span class="tt-title">📋 全部 SKU 明細 &nbsp;<span style="color:var(--text-dim);font-weight:400;font-size:0.8rem;">All SKUs · GMV &amp; QTY</span></span>
         <span id="trend-table-count" class="table-count"></span>
       </div>
       <div class="trend-table-scroll">
@@ -596,11 +601,14 @@
 const MANIFEST_URL = 'data/order_reports_manifest.json';
 const MONTHLY_URL = 'data/monthly_reports.json';
 const TREND_URL = 'data/sales_trend_data.js';
+const MONTHLY_SKU_URL = 'data/monthly_sku_data.js';
 let gmvChart = null;
 let skuGmvChart = null;
 let skuQtyChart = null;
 let trendData = null;
+let monthlySkuData = null;
 let currentSku = null;
+let currentTrendMode = 'daily'; // 'daily' or 'monthly' (month key e.g. 2026-01)
 let fullManifest = [];
 let rangeStart = null;
 let rangeEnd = null;
@@ -794,6 +802,12 @@ function populateMonthFilter(manifest) {
       if (months.indexOf(mk) === -1) months.push(mk);
     }
   });
+  // Also add months from monthly reports (2026-01..07 have no daily breakdown)
+  if (fullMonthly) {
+    fullMonthly.forEach(function(m) {
+      if (m.month && months.indexOf(m.month) === -1) months.push(m.month);
+    });
+  }
   months.sort();
   select.innerHTML = '<option value="all">🗓️ 全部月份 All Months</option>';
   months.forEach(function(mk) {
@@ -813,41 +827,82 @@ function renderChart(manifest) {
   // Apply month filter if selected
   const filterEl = document.getElementById('gmv-month-filter');
   const selectedMonth = filterEl ? filterEl.value : 'all';
-  let filtered = manifest;
-  if (selectedMonth !== 'all') {
-    filtered = manifest.filter(function(r) {
+  let labels, data, chartType, chartTitle;
+
+  if (selectedMonth === 'all') {
+    // Monthly aggregate view: combine daily months + monthly-only months
+    const monthMap = {};
+    manifest.forEach(function(r) {
+      const mk = (r.date_iso || '').slice(0, 7);
+      if (!mk) return;
+      if (!monthMap[mk]) monthMap[mk] = 0;
+      monthMap[mk] += parseGmv(r.gmv_raw || r.gmv);
+    });
+    // Add monthly-only months from fullMonthly (e.g. 2026-01..07)
+    (fullMonthly || []).forEach(function(m) {
+      if (!m.month || m.days === 0) return; // days=0 means monthly-only (no daily breakdown)
+      if (!monthMap[m.month]) monthMap[m.month] = 0;
+      monthMap[m.month] += parseGmv(m.gmv_raw || m.gmv);
+    });
+    // Ensure all monthly entries present (even days=0)
+    (fullMonthly || []).forEach(function(m) {
+      if (m.month && monthMap[m.month] === undefined) {
+        monthMap[m.month] = parseGmv(m.gmv_raw || m.gmv);
+      }
+    });
+    const keys = Object.keys(monthMap).sort();
+    labels = keys.map(function(k) { return k.slice(0, 4) + '-' + k.slice(5, 7); });
+    data = keys.map(function(k) { return monthMap[k]; });
+    chartType = 'line';
+    chartTitle = '📈 GMV 走勢（按月）· Monthly GMV Trend';
+  } else {
+    // Single month selected: daily view for months with daily data
+    let filtered = manifest.filter(function(r) {
       return (r.date_iso || '').slice(0, 7) === selectedMonth;
     });
+    if (filtered.length === 0) {
+      // Monthly-only month (2026-01..07): show single bar with month total
+      let mv = null;
+      (fullMonthly || []).forEach(function(m) {
+        if (m.month === selectedMonth) mv = parseGmv(m.gmv_raw || m.gmv);
+      });
+      labels = [selectedMonth.slice(0, 4) + '-' + selectedMonth.slice(5, 7)];
+      data = [mv || 0];
+      chartType = 'bar';
+      chartTitle = '📈 ' + selectedMonth.slice(0, 4) + '年 ' + parseInt(selectedMonth.slice(5, 7), 10) + '月 GMV（月度合計）';
+    } else {
+      const sorted = filtered.slice().reverse();
+      labels = sorted.map(function(r) { return (r.date_iso || r.date || '').slice(5); });
+      data = sorted.map(function(r) { return parseGmv(r.gmv_raw || r.gmv); });
+      chartType = 'line';
+      chartTitle = '📈 ' + selectedMonth.slice(0, 4) + '年 ' + parseInt(selectedMonth.slice(5, 7), 10) + '月 GMV（每日）';
+    }
   }
-  if (filtered.length === 0) {
-    filtered = manifest;
-  }
-  const sorted = filtered.slice().reverse();
-  const labels = sorted.map(function(r) { return (r.date_iso || r.date || '').slice(5); });
-  const data = sorted.map(function(r) { return parseGmv(r.gmv_raw || r.gmv); });
   if (gmvChart) gmvChart.destroy();
   gmvChart = new Chart(ctx, {
-    type: 'line',
+    type: chartType,
     data: {
       labels: labels,
       datasets: [{
         label: 'GMV',
         data: data,
-        backgroundColor: 'rgba(193, 0, 46, 0.12)',
+        backgroundColor: chartType === 'bar' ? 'rgba(193, 0, 46, 0.75)' : 'rgba(193, 0, 46, 0.12)',
         borderColor: 'rgba(193, 0, 46, 1)',
         borderWidth: 2,
-        pointRadius: 5,
+        pointRadius: chartType === 'bar' ? 0 : 5,
         pointBackgroundColor: '#fff',
         pointBorderColor: 'rgba(193, 0, 46, 1)',
         pointBorderWidth: 2,
         tension: 0.3,
-        fill: true
+        fill: chartType === 'bar' ? false : true,
+        borderRadius: chartType === 'bar' ? 6 : 0
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
+        title: { display: true, text: chartTitle, color: '#2f2f2f', font: { size: 14 } },
         legend: { display: false },
         tooltip: {
           callbacks: {
@@ -968,25 +1023,42 @@ function filterSkuList(skus, query) {
   });
 }
 
-function renderSkuCharts(sku) {
-  if (!trendData) return;
-  const dates = trendData.dates;
-  const labels = dates.map(function(d) { return d.slice(5); });
+function renderSkuCharts(sku, mIdx) {
+  const isMonthly = (mIdx !== undefined && mIdx !== null && monthlySkuData);
+  if (!trendData && !isMonthly) return;
 
-  let gmvData, qtyData, skuLabel;
-  if (!sku) {
-    // All SKU aggregate: sum all SKUs per day
-    skuLabel = '全部 SKU All SKUs';
-    gmvData = dates.map(function(_, i) {
-      return trendData.skus.reduce(function(a, s) { return a + (s.gmv[i] || 0); }, 0);
-    });
-    qtyData = dates.map(function(_, i) {
-      return trendData.skus.reduce(function(a, s) { return a + (s.qty[i] || 0); }, 0);
-    });
+  let labels, gmvData, qtyData, skuLabel, titleSuffix;
+
+  if (isMonthly) {
+    // Monthly mode: single value per SKU for selected month
+    const monthKey = monthlySkuData.months[mIdx];
+    titleSuffix = monthKey.slice(0, 4) + '年' + parseInt(monthKey.slice(5, 7), 10) + '月（月度）';
+    labels = [titleSuffix];
+    if (!sku) {
+      skuLabel = '全部 SKU All SKUs';
+      gmvData = [monthlySkuData.skus.reduce(function(a, s) { return a + (s.gmv[mIdx] || 0); }, 0)];
+      qtyData = [monthlySkuData.skus.reduce(function(a, s) { return a + (s.qty[mIdx] || 0); }, 0)];
+    } else {
+      skuLabel = displaySku(sku.sku) + ' — ' + sku.name;
+      gmvData = [sku.gmv[mIdx] || 0];
+      qtyData = [sku.qty[mIdx] || 0];
+    }
   } else {
-    skuLabel = displaySku(sku.sku) + ' — ' + sku.name;
-    gmvData = sku.gmv;
-    qtyData = sku.qty;
+    const dates = trendData.dates;
+    labels = dates.map(function(d) { return d.slice(5); });
+    if (!sku) {
+      skuLabel = '全部 SKU All SKUs';
+      gmvData = dates.map(function(_, i) {
+        return trendData.skus.reduce(function(a, s) { return a + (s.gmv[i] || 0); }, 0);
+      });
+      qtyData = dates.map(function(_, i) {
+        return trendData.skus.reduce(function(a, s) { return a + (s.qty[i] || 0); }, 0);
+      });
+    } else {
+      skuLabel = displaySku(sku.sku) + ' — ' + sku.name;
+      gmvData = sku.gmv;
+      qtyData = sku.qty;
+    }
   }
   const totalGmv = gmvData.reduce(function(a, b) { return a + b; }, 0);
   const totalQty = qtyData.reduce(function(a, b) { return a + b; }, 0);
@@ -996,33 +1068,31 @@ function renderSkuCharts(sku) {
     '<span class="ts-item">🔎 ' + escapeHtml(skuLabel) + '</span>' +
     '<span class="ts-item">🧮 總 GMV: <strong>' + fmtMoney(totalGmv) + '</strong></span>' +
     '<span class="ts-item">📦 總 QTY: <strong>' + totalQty.toLocaleString() + '</strong></span>' +
-    '<span class="ts-item">📆 有銷售日數: <strong>' + daysWithSales + '/' + dates.length + '</strong></span>' +
-    '<span class="ts-item">💵 平均日 GMV: <strong>' + fmtMoney(totalGmv / dates.length) + '</strong></span>';
+    '<span class="ts-item">📆 有銷售日數: <strong>' + daysWithSales + '/' + labels.length + '</strong></span>' +
+    '<span class="ts-item">💵 平均日 GMV: <strong>' + fmtMoney(totalGmv / labels.length) + '</strong></span>';
+
+  const gmvTitle = isMonthly ? '💰 ' + titleSuffix + ' GMV（月度）' : '💰 每日 GMV · Daily GMV';
+  const qtyTitle = isMonthly ? '📦 ' + titleSuffix + ' 數量（月度）' : '📦 每日數量 · Daily QTY';
 
   if (skuGmvChart) skuGmvChart.destroy();
   skuGmvChart = new Chart(document.getElementById('skuGmvChart'), {
-    type: 'line',
+    type: 'bar',
     data: {
       labels: labels,
       datasets: [{
         label: 'GMV',
         data: gmvData,
-        backgroundColor: 'rgba(193, 0, 46, 0.12)',
+        backgroundColor: 'rgba(193, 0, 46, 0.75)',
         borderColor: 'rgba(193, 0, 46, 1)',
-        borderWidth: 2,
-        pointRadius: 5,
-        pointBackgroundColor: '#fff',
-        pointBorderColor: 'rgba(193, 0, 46, 1)',
-        pointBorderWidth: 2,
-        tension: 0.3,
-        fill: true
+        borderWidth: 1,
+        borderRadius: 6
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        title: { display: true, text: '💰 每日 GMV · Daily GMV', color: '#2f2f2f', font: { size: 14 } },
+        title: { display: true, text: gmvTitle, color: '#2f2f2f', font: { size: 14 } },
         legend: { display: false },
         tooltip: {
           callbacks: { label: function(ct) { return ' GMV: ' + fmtMoney(ct.parsed.y); } }
@@ -1037,25 +1107,23 @@ function renderSkuCharts(sku) {
 
   if (skuQtyChart) skuQtyChart.destroy();
   skuQtyChart = new Chart(document.getElementById('skuQtyChart'), {
-    type: 'line',
+    type: 'bar',
     data: {
       labels: labels,
       datasets: [{
         label: 'QTY',
         data: qtyData,
-        backgroundColor: 'rgba(91, 103, 112, 0.2)',
+        backgroundColor: 'rgba(91, 103, 112, 0.75)',
         borderColor: 'rgba(91, 103, 112, 1)',
-        borderWidth: 2,
-        tension: 0.3,
-        fill: true,
-        pointRadius: 4
+        borderWidth: 1,
+        borderRadius: 6
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        title: { display: true, text: '📦 每日數量 · Daily QTY', color: '#2f2f2f', font: { size: 14 } },
+        title: { display: true, text: qtyTitle, color: '#2f2f2f', font: { size: 14 } },
         legend: { display: false },
         tooltip: {
           callbacks: { label: function(ct) { return ' QTY: ' + ct.parsed.y.toLocaleString(); } }
@@ -1070,23 +1138,70 @@ function renderSkuCharts(sku) {
 }
 
 function loadTrend() {
-  const script = document.createElement('script');
-  script.src = TREND_URL + '?v=' + Date.now();
-  script.onload = function() {
-    trendData = window.salesTrendData;
-    if (!trendData || !trendData.skus || trendData.skus.length === 0) {
-      document.querySelector('.trend-controls').innerHTML = '<div class="empty">暫無 SKU 數據 No SKU data</div>';
-      return;
-    }
-    buildSkuOptions(trendData.skus);
-    // Default: All SKU (show all + aggregate chart)
-    currentSku = null;
-    document.getElementById('sku-select').value = 'all';
-    renderSkuCharts(null);
-    renderTrendTable(trendData.skus);
-    setupRangeControls();
+  // Load monthly by-SKU data (2026-01..07) first
+  const mScript = document.createElement('script');
+  mScript.src = MONTHLY_SKU_URL + '?v=' + Date.now();
+  mScript.onload = function() {
+    monthlySkuData = window.monthlySkuData || null;
+    // Then load daily trend data
+    const script = document.createElement('script');
+    script.src = TREND_URL + '?v=' + Date.now();
+    script.onload = function() {
+      trendData = window.salesTrendData;
+      if (!trendData || !trendData.skus || trendData.skus.length === 0) {
+        document.querySelector('.trend-controls').innerHTML = '<div class="empty">暫無 SKU 數據 No SKU data</div>';
+        return;
+      }
+      setupTrendMonthFilter();
+      buildSkuOptions(trendData.skus);
+      // Default: All SKU (show all + aggregate chart)
+      currentSku = null;
+      document.getElementById('sku-select').value = 'all';
+      renderSkuCharts(null);
+      renderTrendTable(trendData.skus);
+      setupRangeControls();
+    };
+    document.body.appendChild(script);
   };
-  document.body.appendChild(script);
+  document.body.appendChild(mScript);
+}
+
+function setupTrendMonthFilter() {
+  const sel = document.getElementById('trend-month-filter');
+  if (!sel) return;
+  sel.innerHTML = '<option value="daily">🗓️ 最新月份（每日）Daily</option>';
+  if (monthlySkuData && monthlySkuData.months) {
+    monthlySkuData.months.forEach(function(mk) {
+      const opt = document.createElement('option');
+      opt.value = mk;
+      opt.textContent = mk.slice(0, 4) + '年 ' + parseInt(mk.slice(5, 7), 10) + '月（月度）';
+      sel.appendChild(opt);
+    });
+  }
+  sel.addEventListener('change', function() {
+    currentTrendMode = sel.value;
+    const rangeWrap = document.querySelector('.range-controls');
+    if (currentTrendMode === 'daily') {
+      if (rangeWrap) rangeWrap.style.display = '';
+      buildSkuOptions(trendData.skus);
+      currentSku = null;
+      document.getElementById('sku-select').value = 'all';
+      renderSkuCharts(null);
+      renderTrendTable(trendData.skus);
+      setupRangeControls();
+    } else {
+      if (rangeWrap) rangeWrap.style.display = 'none';
+      // Use monthly data for selected month
+      const mIdx = monthlySkuData.months.indexOf(currentTrendMode);
+      if (mIdx >= 0) {
+        buildSkuOptions(monthlySkuData.skus);
+        currentSku = null;
+        document.getElementById('sku-select').value = 'all';
+        renderSkuCharts(null, mIdx);
+        renderTrendTable(monthlySkuData.skus, mIdx);
+      }
+    }
+  });
 }
 
 function getRangeIndices() {
@@ -1126,30 +1241,45 @@ function displaySku(sku) {
   return String(sku);
 }
 
-function renderTrendTable(skus) {
+function renderTrendTable(skus, mIdx) {
   const thead = document.getElementById('trend-thead');
   const tbody = document.getElementById('trend-tbody');
-  if (!trendData || !skus || skus.length === 0) {
+  const isMonthly = (mIdx !== undefined && mIdx !== null && monthlySkuData);
+  if ((!trendData && !isMonthly) || !skus || skus.length === 0) {
     thead.innerHTML = '';
     tbody.innerHTML = '<tr><td class="empty" style="padding:24px;">暫無數據 No data</td></tr>';
     document.getElementById('trend-table-count').textContent = '0 SKUs';
     document.getElementById('trend-total-bar').innerHTML = '';
     return;
   }
-  const [sIdx, eIdx] = getRangeIndices();
-  const rangeDates = trendData.dates.slice(sIdx, eIdx + 1);
+  let sIdx, eIdx, rangeDates, headerSuffix;
+  if (isMonthly) {
+    const monthKey = monthlySkuData.months[mIdx];
+    headerSuffix = monthKey.slice(0, 4) + '年' + parseInt(monthKey.slice(5, 7), 10) + '月（月度）';
+    sIdx = 0; eIdx = 0; rangeDates = [monthKey];
+  } else {
+    sIdx = getRangeIndices()[0];
+    eIdx = getRangeIndices()[1];
+    rangeDates = trendData.dates.slice(sIdx, eIdx + 1);
+    headerSuffix = rangeDates.length + '日';
+  }
 
   // Header: SKU | Brand | SKU Name (CHI) | GMV | QTY
   // Column ratio: SKU compact, Brand slim, SKU Name wide
-  thead.innerHTML = '<tr><th style="min-width:100px;">SKU</th><th style="min-width:55px;">Brand name (中文)</th><th style="min-width:280px;">SKU Name (CHI)</th><th style="text-align:right;">GMV（' + rangeDates.length + '日）</th><th style="text-align:right;">QTY</th></tr>';
+  thead.innerHTML = '<tr><th style="min-width:100px;">SKU</th><th style="min-width:55px;">Brand name (中文)</th><th style="min-width:280px;">SKU Name (CHI)</th><th style="text-align:right;">GMV（' + headerSuffix + '）</th><th style="text-align:right;">QTY</th></tr>';
 
   let rowsHtml = '';
   let allGmv = 0, allQty = 0;
   skus.forEach(function(s) {
     let totalGmv = 0, totalQty = 0;
-    for (let i = sIdx; i <= eIdx; i++) {
-      totalGmv += (s.gmv[i] || 0);
-      totalQty += (s.qty[i] || 0);
+    if (isMonthly) {
+      totalGmv = s.gmv[mIdx] || 0;
+      totalQty = s.qty[mIdx] || 0;
+    } else {
+      for (let i = sIdx; i <= eIdx; i++) {
+        totalGmv += (s.gmv[i] || 0);
+        totalQty += (s.qty[i] || 0);
+      }
     }
     allGmv += totalGmv;
     allQty += totalQty;
@@ -1172,43 +1302,63 @@ function renderTrendTable(skus) {
     '<span class="tb-qty">' + allQty.toLocaleString() + ' 件</span>';
 
   document.getElementById('trend-table-count').textContent =
-    skus.length + ' SKUs · ' + rangeDates.length + ' 日 days';
+    skus.length + ' SKUs · ' + headerSuffix;
   currentTableSkus = skus;
-  renderRangeSummary();
+  if (!isMonthly) renderRangeSummary();
 }
 
 function exportTrendExcel() {
-  if (!trendData || typeof XLSX === 'undefined') {
+  if ((!trendData && !monthlySkuData) || typeof XLSX === 'undefined') {
     alert('Excel library not loaded yet — 請稍候再試');
     return;
   }
-  const [sIdx, eIdx] = getRangeIndices();
-  const rangeDates = trendData.dates.slice(sIdx, eIdx + 1);
-  const rows = [['SKU', 'Brand name (中文)', 'SKU Name (CHI)', 'GMV', 'QTY', '日期範圍', rangeDates[0] + ' 至 ' + rangeDates[rangeDates.length - 1]]];
-  const exportSkus = (currentTableSkus && currentTableSkus.length > 0) ? currentTableSkus : trendData.skus;
-  exportSkus.forEach(function(s) {
-    let totalGmv = 0, totalQty = 0;
-    for (let i = sIdx; i <= eIdx; i++) {
-      totalGmv += (s.gmv[i] || 0);
-      totalQty += (s.qty[i] || 0);
-    }
-    rows.push([s.sku, s.brand || '', s.name || '', Math.round(totalGmv * 100) / 100, totalQty]);
-  });
-  // Append total row
-  let allGmv = 0, allQty = 0;
-  exportSkus.forEach(function(s) {
-    for (let i = sIdx; i <= eIdx; i++) {
-      allGmv += (s.gmv[i] || 0);
-      allQty += (s.qty[i] || 0);
-    }
-  });
-  rows.push(['總計 Total', '', '', Math.round(allGmv * 100) / 100, allQty]);
+  const isMonthly = (currentTrendMode !== 'daily' && monthlySkuData);
+  let rows, fname, exportSkus;
+  if (isMonthly) {
+    const mIdx = monthlySkuData.months.indexOf(currentTrendMode);
+    const monthKey = monthlySkuData.months[mIdx];
+    const label = monthKey.slice(0, 4) + '年' + parseInt(monthKey.slice(5, 7), 10) + '月';
+    rows = [['SKU', 'Brand name (中文)', 'SKU Name (CHI)', 'GMV', 'QTY', '月份', label]];
+    exportSkus = (currentTableSkus && currentTableSkus.length > 0) ? currentTableSkus : monthlySkuData.skus;
+    exportSkus.forEach(function(s) {
+      rows.push([s.sku, s.brand || '', s.name || '', Math.round((s.gmv[mIdx] || 0) * 100) / 100, s.qty[mIdx] || 0]);
+    });
+    let allGmv = 0, allQty = 0;
+    exportSkus.forEach(function(s) {
+      allGmv += (s.gmv[mIdx] || 0);
+      allQty += (s.qty[mIdx] || 0);
+    });
+    rows.push(['總計 Total', '', '', Math.round(allGmv * 100) / 100, allQty]);
+    fname = 'P0068001_Sales_Trend_' + monthKey.replace('-', '') + '.xlsx';
+  } else {
+    const [sIdx, eIdx] = getRangeIndices();
+    const rangeDates = trendData.dates.slice(sIdx, eIdx + 1);
+    rows = [['SKU', 'Brand name (中文)', 'SKU Name (CHI)', 'GMV', 'QTY', '日期範圍', rangeDates[0] + ' 至 ' + rangeDates[rangeDates.length - 1]]];
+    exportSkus = (currentTableSkus && currentTableSkus.length > 0) ? currentTableSkus : trendData.skus;
+    exportSkus.forEach(function(s) {
+      let totalGmv = 0, totalQty = 0;
+      for (let i = sIdx; i <= eIdx; i++) {
+        totalGmv += (s.gmv[i] || 0);
+        totalQty += (s.qty[i] || 0);
+      }
+      rows.push([s.sku, s.brand || '', s.name || '', Math.round(totalGmv * 100) / 100, totalQty]);
+    });
+    // Append total row
+    let allGmv = 0, allQty = 0;
+    exportSkus.forEach(function(s) {
+      for (let i = sIdx; i <= eIdx; i++) {
+        allGmv += (s.gmv[i] || 0);
+        allQty += (s.qty[i] || 0);
+      }
+    });
+    rows.push(['總計 Total', '', '', Math.round(allGmv * 100) / 100, allQty]);
+    fname = 'P0068001_Sales_Trend_' + rangeDates[0].replace(/-/g, '') + '_' + rangeDates[rangeDates.length - 1].replace(/-/g, '') + '.xlsx';
+  }
   const ws = XLSX.utils.aoa_to_sheet(rows);
   // Column widths
   ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 50 }, { wch: 14 }, { wch: 10 }, { wch: 30 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Sales Trend');
-  const fname = 'P0068001_Sales_Trend_' + rangeDates[0].replace(/-/g, '') + '_' + rangeDates[rangeDates.length - 1].replace(/-/g, '') + '.xlsx';
   XLSX.writeFile(wb, fname);
 }
 
@@ -1227,6 +1377,7 @@ function setupRangeControls() {
   applyBtn.addEventListener('click', function() {
     rangeStart = startEl.value || null;
     rangeEnd = endEl.value || null;
+    if (currentTrendMode !== 'daily') return; // range only applies to daily mode
     renderTrendTable(trendData.skus);
     renderSkuCharts(currentSku);
   });
@@ -1235,6 +1386,7 @@ function setupRangeControls() {
     endEl.value = '';
     rangeStart = null;
     rangeEnd = null;
+    if (currentTrendMode !== 'daily') return;
     renderTrendTable(trendData.skus);
     renderSkuCharts(currentSku);
   });
@@ -1252,34 +1404,52 @@ function escapeHtml(str) {
 function setupTrendControls() {
   const select = document.getElementById('sku-select');
   const search = document.getElementById('sku-search');
+
+  function getActiveSkus() {
+    if (currentTrendMode !== 'daily' && monthlySkuData) {
+      return monthlySkuData.skus;
+    }
+    return trendData.skus;
+  }
+  function getActiveMIdx() {
+    if (currentTrendMode !== 'daily' && monthlySkuData) {
+      return monthlySkuData.months.indexOf(currentTrendMode);
+    }
+    return undefined;
+  }
+
   select.addEventListener('change', function() {
     if (!trendData) return;
+    const mIdx = getActiveMIdx();
+    const skus = getActiveSkus();
     if (select.value === 'all') {
       // All SKU: show all in table, charts show aggregate
       currentSku = null;
-      renderSkuCharts(null);
-      renderTrendTable(trendData.skus);
+      renderSkuCharts(null, mIdx);
+      renderTrendTable(skus, mIdx);
       return;
     }
-    currentSku = trendData.skus.find(function(s) { return s.sku === select.value; });
+    currentSku = skus.find(function(s) { return s.sku === select.value; });
     if (currentSku) {
-      renderSkuCharts(currentSku);
+      renderSkuCharts(currentSku, mIdx);
       // Table follows: show only the selected SKU
-      renderTrendTable([currentSku]);
+      renderTrendTable([currentSku], mIdx);
     }
   });
   search.addEventListener('input', function() {
     if (!trendData) return;
-    const filtered = filterSkuList(trendData.skus, search.value);
+    const mIdx = getActiveMIdx();
+    const skus = getActiveSkus();
+    const filtered = filterSkuList(skus, search.value);
     buildSkuOptions(filtered);
     if (filtered.length > 0) {
       currentSku = filtered[0];
       select.value = currentSku.sku;
-      renderSkuCharts(currentSku);
-      renderTrendTable(filtered);
+      renderSkuCharts(currentSku, mIdx);
+      renderTrendTable(filtered, mIdx);
     } else {
       select.innerHTML = '<option value="">無匹配 No match</option>';
-      renderTrendTable([]);
+      renderTrendTable([], mIdx);
     }
   });
 }

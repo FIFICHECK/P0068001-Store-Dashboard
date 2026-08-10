@@ -1461,19 +1461,10 @@ async function load() {
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const manifest = await resp.json();
     fullManifest = manifest;
-    populateMonthFilter(manifest);
     populateReportFilters(manifest);
     setupReportFilters();
     renderStats(manifest);
     renderTable(manifest);
-    renderChart(manifest);
-    // Month filter change listener
-    const monthFilter = document.getElementById('gmv-month-filter');
-    if (monthFilter) {
-      monthFilter.addEventListener('change', function() {
-        renderChart(fullManifest);
-      });
-    }
     // Load monthly reports
     const mresp = await fetch(MONTHLY_URL + '?v=' + Date.now());
     if (mresp.ok) {
@@ -1481,6 +1472,16 @@ async function load() {
       setupMonthlyFilter();
     } else {
       document.getElementById('monthly-tbody').innerHTML = '<tr><td colspan="5" class="empty">暫無月度報表 No monthly reports yet</td></tr>';
+    }
+    // Populate GMV month filter AFTER monthly data loaded (includes 2026-01..07)
+    populateMonthFilter(manifest);
+    renderChart(manifest);
+    // Month filter change listener
+    const monthFilter = document.getElementById('gmv-month-filter');
+    if (monthFilter) {
+      monthFilter.addEventListener('change', function() {
+        renderChart(fullManifest);
+      });
     }
     // Load sales trend + setup controls
     setupTrendControls();

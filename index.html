@@ -1178,7 +1178,9 @@ function setupTrendMonthFilter() {
   }
   sel.innerHTML = '<option value="daily">' + latestLabel + '</option>';
   if (monthlySkuData && monthlySkuData.months) {
-    monthlySkuData.months.forEach(function(mk) {
+    // Sort months newest first (2026-07 ... 2026-01)
+    const months = monthlySkuData.months.slice().sort().reverse();
+    months.forEach(function(mk) {
       const opt = document.createElement('option');
       opt.value = mk;
       opt.textContent = mk.slice(0, 4) + '年 ' + parseInt(mk.slice(5, 7), 10) + '月（月度）';

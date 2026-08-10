@@ -1170,11 +1170,11 @@ function setupTrendMonthFilter() {
   const sel = document.getElementById('trend-month-filter');
   if (!sel) return;
   // Latest month label from daily trend data (e.g. 2026-08)
-  let latestLabel = '🗓️ 最新月份（每日）Daily';
+  let latestLabel = '最新月份（每日）Daily';
   if (trendData && trendData.dates && trendData.dates.length > 0) {
     const lastDate = trendData.dates[trendData.dates.length - 1];
     const mk = lastDate.slice(0, 7);
-    latestLabel = '🗓️ ' + mk.slice(0, 4) + '年 ' + parseInt(mk.slice(5, 7), 10) + '月（每日）';
+    latestLabel = mk.slice(0, 4) + '年 ' + parseInt(mk.slice(5, 7), 10) + '月（每日）';
   }
   sel.innerHTML = '<option value="daily">' + latestLabel + '</option>';
   if (monthlySkuData && monthlySkuData.months) {

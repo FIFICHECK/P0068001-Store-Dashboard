@@ -196,8 +196,25 @@ def main():
             print(f"Monthly {mk}: {len(by_month[mk])} days, GMV ${gmv:,.2f}, {lines} lines, {qty} qty")
 
     monthly_meta.sort(key=lambda x: x["month"], reverse=True)
-    with open(os.path.join(DATA_DIR, "monthly_reports.json"), "w", encoding="utf-8") as f:
+
+    # Preserve monthly-only entries (imported via import_monthly_csv.py, e.g. 2026-01..07)
+    # These have no daily XLSX so they are not in by_month; merge them back in.
+    existing_path = os.path.join(DATA_DIR, "monthly_reports.json")
+    if os.path.exists(existing_path):
+        try:
+            with open(existing_path, encoding="utf-8") as f:
+                existing_meta = json.load(f)
+            existing_months = {m["month"] for m in monthly_meta}
+            for em in existing_meta:
+                if em["month"] not in existing_months and not em.get("filename"):
+                    monthly_meta.append(em)
+            monthly_meta.sort(key=lambda x: x["month"], reverse=True)
+        except Exception as e:
+            print(f"Warning: could not merge existing monthly_reports.json: {e}")
+
+    with open(existing_path, "w", encoding="utf-8") as f:
         json.dump(monthly_meta, f, ensure_ascii=False, indent=2)
+    print(f"Monthly reports: {len(monthly_meta)} entries")
 
     # Build Sales Trend data (by SKU by daily GMV & QTY)
     sku_data = {}   # sku_id -> {brand, name, by_date: {date: [gmv, qty]}}

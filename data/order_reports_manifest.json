@@ -1,5 +1,15 @@
 [
   {
+    "date": "8月11日",
+    "date_iso": "2026-08-11",
+    "gmv": "$30,918.00",
+    "gmv_raw": 30918.0,
+    "orders": 376,
+    "qty": 480,
+    "timestamp": "23:59",
+    "filename": "ECOM-MMSNG_DAILY_ORDER_P0068001_20260811235959.xlsx"
+  },
+  {
     "date": "8月10日",
     "date_iso": "2026-08-10",
     "gmv": "$28,618.00",

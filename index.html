@@ -839,10 +839,11 @@ function renderChart(manifest) {
       monthMap[mk] += parseGmv(r.gmv_raw || r.gmv);
     });
     // Add monthly-only months from fullMonthly (e.g. 2026-01..07)
+    // ⚠️ Skip months already covered by daily manifest (monthMap has value) —
+    //    otherwise months with BOTH daily + monthly entries (e.g. 2026-08) get double counted
     (fullMonthly || []).forEach(function(m) {
-      if (!m.month || m.days === 0) return; // days=0 means monthly-only (no daily breakdown)
-      if (!monthMap[m.month]) monthMap[m.month] = 0;
-      monthMap[m.month] += parseGmv(m.gmv_raw || m.gmv);
+      if (!m.month || monthMap[m.month] !== undefined) return; // already covered by daily manifest
+      monthMap[m.month] = parseGmv(m.gmv_raw || m.gmv);
     });
     // Ensure all monthly entries present (even days=0)
     (fullMonthly || []).forEach(function(m) {

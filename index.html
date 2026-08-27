@@ -584,6 +584,26 @@
     </div>
   </div>
 
+  <div class="panel">
+    <div class="panel-title">⚠️ 保質期檢查 &nbsp;<span style="color:var(--text-dim);font-size:0.8rem;font-weight:400;">Shelf Life Check · 最短保質期 vs GreenLab 要求</span></div>
+    <div class="panel-desc" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span>對比 MMS 商品管理「最短保質期」與 GreenLab 臨期要求 — 只顯示有問題嘅 SKU（未填 / 低於要求）</span>
+      <span id="shelf-life-check-meta" class="table-count" style="margin-left:auto;"></span>
+    </div>
+    <div class="trend-table-block">
+      <div class="trend-table-header">
+        <span class="tt-title">🔍 問題 SKU 清單 &nbsp;<span style="color:var(--text-dim);font-weight:400;font-size:0.8rem;">Needs Fix · 每日更新</span></span>
+        <span id="shelf-life-check-count" class="table-count"></span>
+      </div>
+      <div class="trend-table-scroll">
+        <table class="trend-table">
+          <thead id="shelf-life-thead"></thead>
+          <tbody id="shelf-life-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <div class="footer-inner">
       <span class="footer-logo">MUJI</span>
@@ -602,6 +622,7 @@ const MANIFEST_URL = 'data/order_reports_manifest.json';
 const MONTHLY_URL = 'data/monthly_reports.json';
 const TREND_URL = 'data/sales_trend_data.js';
 const MONTHLY_SKU_URL = 'data/monthly_sku_data.js';
+const SHELF_LIFE_URL = 'data/shelf_life_check.json';
 let gmvChart = null;
 let skuGmvChart = null;
 let skuQtyChart = null;
@@ -1138,6 +1159,55 @@ function renderSkuCharts(sku, mIdx) {
   });
 }
 
+function renderShelfLifeCheck() {
+  fetch(SHELF_LIFE_URL + '?v=' + Date.now())
+    .then(function(resp) { return resp.ok ? resp.json() : null; })
+    .then(function(data) {
+      const meta = document.getElementById('shelf-life-check-meta');
+      const count = document.getElementById('shelf-life-check-count');
+      const thead = document.getElementById('shelf-life-thead');
+      const tbody = document.getElementById('shelf-life-tbody');
+      if (!data || !data.warnings) {
+        if (meta) meta.textContent = '—';
+        if (count) count.textContent = '0 個問題';
+        if (thead) thead.innerHTML = '';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="empty">暫無數據 No data yet（cron 未跑 / export 未下載）</td></tr>';
+        return;
+      }
+      const warnings = data.warnings || [];
+      if (meta) meta.textContent = '更新: ' + (data.generated_at || '—') + ' · 檢查 ' + (data.checked_skus || 0) + ' SKU';
+      if (count) count.textContent = '⚠️ ' + warnings.length + ' 個問題';
+      if (thead) {
+        thead.innerHTML = '<tr>' +
+          '<th>SKU</th><th>名稱 Name</th><th>品牌 Brand</th><th>最短保質期</th><th>GreenLab 要求</th><th>狀態 Status</th>' +
+          '</tr>';
+      }
+      if (!tbody) return;
+      if (warnings.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty">✅ 全部符合要求 All SKUs meet GreenLab requirement</td></tr>';
+        return;
+      }
+      tbody.innerHTML = warnings.map(function(w) {
+        const dp = w.dp ? w.dp + ' 日' : '<span style="color:var(--accent);">未填</span>';
+        const status = w.status === 'missing'
+          ? '<span style="color:var(--accent);font-weight:700;">⚠️ 未填</span>'
+          : '<span style="color:var(--accent);font-weight:700;">⚠️ 低於要求</span>';
+        return '<tr>' +
+          '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/' + encodeURIComponent(w.sku) + '" target="_blank">' + w.sku + '</a></td>' +
+          '<td>' + (w.name || '—') + '</td>' +
+          '<td>' + (w.brand || '—') + '</td>' +
+          '<td>' + dp + '</td>' +
+          '<td>' + (w.greenlab_required != null ? w.greenlab_required + ' 日' : '—') + '</td>' +
+          '<td>' + status + '</td>' +
+          '</tr>';
+      }).join('');
+    })
+    .catch(function() {
+      const tbody = document.getElementById('shelf-life-tbody');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="empty">⚠️ 無法載入檢查資料 Failed to load shelf life check</td></tr>';
+    });
+}
+
 function loadTrend() {
   // Load monthly by-SKU data (2026-01..07) first
   const mScript = document.createElement('script');
@@ -1496,6 +1566,8 @@ async function load() {
     // Load sales trend + setup controls
     setupTrendControls();
     loadTrend();
+    // Load shelf life check (independent of trend data)
+    renderShelfLifeCheck();
   } catch (e) {
     document.getElementById('report-tbody').innerHTML =
       '<tr><td colspan="6" class="empty">⚠️ 無法載入報表資料 Failed to load data: ' + e.message + '</td></tr>';

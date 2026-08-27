@@ -590,6 +590,14 @@
       <span>對比 MMS 商品管理「最短保質期」與 GreenLab 臨期要求 — 只顯示有問題嘅 SKU（未填 / 低於要求）</span>
       <span id="shelf-life-check-meta" class="table-count" style="margin-left:auto;"></span>
     </div>
+    <div id="shelf-life-batch-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f0f4ff;border:1px solid #b8c9f0;border-radius:6px;padding:10px 14px;margin:10px 0;">
+      <span style="font-weight:700;">⚡ Batch 工具</span>
+      <button onclick="batchQueue('all')" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">📥 全部加入隊列</button>
+      <button onclick="batchQueue('online')" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🟢 只加 ONLINE</button>
+      <button onclick="batchQueue('offline')" style="background:#c62828;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🔴 只加 OFFLINE</button>
+      <button onclick="downloadShelfLifeExcel()" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">📊 下載 Excel (.xlsx)</button>
+      <span style="color:var(--text-dim);font-size:0.75rem;">Batch 會用每行「建議到期日」input 嘅值</span>
+    </div>
     <div id="shelf-life-queue-bar"></div>
     <div class="trend-table-block">
       <div class="trend-table-header">
@@ -1160,6 +1168,67 @@ function renderSkuCharts(sku, mIdx) {
   });
 }
 
+function batchQueue(filter) {
+  // gather all current warning rows from the DOM, read each editable input value
+  const tbody = document.getElementById('shelf-life-tbody');
+  if (!tbody) return;
+  let q = [];
+  try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+  const rows = tbody.querySelectorAll('tr');
+  let added = 0;
+  rows.forEach(function(tr) {
+    const input = tr.querySelector('.sl-suggest-input');
+    if (!input) return;
+    const sku = input.dataset.sku;
+    const os = tr.textContent.indexOf('OFFLINE') !== -1 ? 'OFFLINE' : (tr.textContent.indexOf('ONLINE') !== -1 ? 'ONLINE' : '');
+    if (filter === 'online' && os !== 'ONLINE') return;
+    if (filter === 'offline' && os !== 'OFFLINE') return;
+    const val = parseInt(input.value, 10);
+    if (val > 0 && !q.some(function(p) { return p.sku === sku; })) {
+      q.push({ sku: sku, value: val, added_at: new Date().toISOString() });
+      added++;
+    }
+  });
+  localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
+  renderShelfLifeCheck();
+  const bar = document.getElementById('shelf-life-queue-bar');
+  if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  alert('✅ 已加入 ' + added + ' 個 SKU 到更新隊列（總數 ' + q.length + '）');
+}
+
+function downloadShelfLifeExcel() {
+  // Build CSV (works everywhere) — SheetJS optional for real .xlsx
+  fetch(SHELF_LIFE_URL + '?v=' + Date.now())
+    .then(function(resp) { return resp.ok ? resp.json() : null; })
+    .then(function(data) {
+      if (!data || !data.warnings) { alert('⚠️ 冇數據'); return; }
+      const headers = ['SKU', '名稱 Name', 'Primary Cat Code', '狀態', '最短保質期', 'GreenLab 要求', '建議到期日', '檢查 Status'];
+      const lines = [headers];
+      data.warnings.forEach(function(w) {
+        lines.push([
+          w.sku, w.name || '', w.category_code || '', w.online_status || '',
+          w.dp || '', w.greenlab_required != null ? w.greenlab_required + ' 日' : '',
+          w.suggested != null ? w.suggested + ' 日' : '', w.status === 'missing' ? '未填' : '低於要求'
+        ]);
+      });
+      const csv = '\uFEFF' + lines.map(function(r) {
+        return r.map(function(c) {
+          const s = String(c == null ? '' : c);
+          return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        }).join(',');
+      }).join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'shelf_life_problems_' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 500);
+    })
+    .catch(function() { alert('⚠️ 下載失敗'); });
+}
+
 function updateShelfLifeQueueBar() {
   const bar = document.getElementById('shelf-life-queue-bar');
   if (!bar) return;
@@ -1217,7 +1286,7 @@ function renderShelfLifeCheck() {
       if (count) count.textContent = '⚠️ ' + warnings.length + ' 個問題';
       if (thead) {
         thead.innerHTML = '<tr>' +
-          '<th>SKU</th><th>名稱 Name</th><th>狀態 (Online/Offline)</th><th>最短保質期</th><th>GreenLab 要求</th><th>建議到期日</th><th>檢查 Status</th><th>更新 Update</th>' +
+          '<th>SKU</th><th>名稱 Name</th><th>Primary Cat Code</th><th>狀態 (Online/Offline)</th><th>最短保質期</th><th>GreenLab 要求</th><th>建議到期日</th><th>檢查 Status</th><th>更新 Update</th>' +
           '</tr>';
       }
       if (!tbody) return;
@@ -1252,6 +1321,7 @@ function renderShelfLifeCheck() {
         return '<tr>' +
           '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/HKTV_S0000033249_S_' + encodeURIComponent((w.sku || '').split('_S_').pop()) + '" target="_blank">' + w.sku + '</a></td>' +
           '<td>' + (w.name || '—') + '</td>' +
+          '<td style="font-size:0.72rem;color:var(--text-dim);">' + (w.category_code || '—') + '</td>' +
           '<td>' + osCell + '</td>' +
           '<td>' + dp + '</td>' +
           '<td>' + (w.greenlab_required != null ? w.greenlab_required + ' 日' : '—') + '</td>' +

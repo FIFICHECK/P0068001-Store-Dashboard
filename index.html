@@ -594,8 +594,14 @@
       <span style="font-weight:700;">📤 Upload Excel → Batch Update</span>
       <button onclick="document.getElementById('sl-excel-input').click()" style="background:#ef6c00;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">📁 揀選 Excel (.xlsx / .csv)</button>
       <input type="file" id="sl-excel-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleShelfLifeExcelUpload(this)">
-      <span style="color:var(--text-dim);font-size:0.75rem;">格式：header 含 SKU + 建議到期日（或 suggested / value / 最短保質期）— 每行會加入更新隊列</span>
+      <span style="color:var(--text-dim);font-size:0.75rem;">格式：header 含 SKU + 建議到期日（或 suggested / value / 最短保質期）</span>
       <span id="sl-upload-msg" style="color:var(--accent);font-size:0.8rem;"></span>
+    </div>
+    <div id="sl-upload-preview" style="display:none;background:#fff8e1;border:1px solid #ffca28;border-radius:6px;padding:10px 14px;margin:6px 0;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span id="sl-upload-preview-text" style="font-size:0.8rem;"></span>
+      <button id="sl-upload-confirm-btn" onclick="confirmShelfLifeUpload()" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:6px 16px;font-size:0.85rem;font-weight:700;cursor:pointer;">✅ 確認 Update</button>
+      <button onclick="cancelShelfLifeUpload()" style="background:#eee;color:#333;border:none;border-radius:4px;padding:6px 12px;font-size:0.8rem;cursor:pointer;">✖️ 取消</button>
+      <span style="color:var(--text-dim);font-size:0.72rem;">撳「確認 Update」先會套用落隊列 + 更新 dashboard 建議值</span>
     </div>
     <div id="shelf-life-search-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#eef7ee;border:1px solid #b7dfb7;border-radius:6px;padding:10px 14px;margin:10px 0;">
       <span style="font-weight:700;">🔍 搜尋 / 篩選</span>
@@ -1361,39 +1367,94 @@ function handleShelfLifeExcelUpload(input) {
       rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
       if (rows.length === 0) { if (msg) msg.textContent = '⚠️ Excel 冇資料'; return; }
       // find columns: sku + value
-      const keys = Object.keys(rows[0]);
-      const lower = keys.map(function(k) { return String(k).toLowerCase().replace(/\s+/g, ''); });
-      const skuKey = keys.find(function(k) { return /sku|sku_id|store_sku/i.test(k); });
-      const valKey = keys.find(function(k) { return /建議到期日|suggested|value|最短保質期|days|日數|minimumshelflife/i.test(k); });
+      const skuKey = Object.keys(rows[0]).find(function(k) { return /sku|sku_id|store_sku/i.test(k); });
+      const valKey = Object.keys(rows[0]).find(function(k) { return /建議到期日|suggested|value|最短保質期|days|日數|minimumshelflife/i.test(k); });
       if (!skuKey) { if (msg) msg.textContent = '⚠️ 搵唔到 SKU column（需要 SKU / sku_id）'; return; }
       if (!valKey) { if (msg) msg.textContent = '⚠️ 搵唔到 建議值 column（需要 建議到期日 / suggested / value）'; return; }
-      let q = [];
-      try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(err) {}
-      let added = 0, skipped = 0;
+      const items = [];
+      let skipped = 0;
       rows.forEach(function(r) {
         let sku = String(r[skuKey] || '').trim();
-        if (!sku) return;
-        // normalize: if user pasted bare SKU without store prefix, add it
+        if (!sku) { skipped++; return; }
         if (sku.indexOf('_S_') === -1) sku = 'P0068001_S_' + sku;
         const rawVal = String(r[valKey] || '').trim();
         const val = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
         if (!(val > 0)) { skipped++; return; }
-        if (!q.some(function(p) { return p.sku === sku; })) {
-          q.push({ sku: sku, value: val, added_at: new Date().toISOString() });
-          added++;
+        if (!items.some(function(p) { return p.sku === sku; })) {
+          items.push({ sku: sku, value: val });
         }
       });
-      localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
-      if (msg) msg.textContent = '✅ 已加入 ' + added + ' 個 SKU（跳過 ' + skipped + ' 個無效）';
-      renderShelfLifeCheck();
-      const bar = document.getElementById('shelf-life-queue-bar');
-      if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (items.length === 0) {
+        if (msg) msg.textContent = '⚠️ 冇有效資料（' + skipped + ' 行無效）';
+        return;
+      }
+      // STAGE 1: show preview, wait for user to click 確認 Update
+      window.__slUploadPreview = items;
+      const preview = document.getElementById('sl-upload-preview');
+      const ptext = document.getElementById('sl-upload-preview-text');
+      if (preview) preview.style.display = 'flex';
+      if (ptext) ptext.textContent = '📄 讀到 ' + items.length + ' 個 SKU（' + skipped + ' 行無效）— 檢查下面預覽再確認：';
+      if (msg) msg.textContent = '📄 讀取完成，等確認';
+      renderShelfLifeUploadPreview(items);
     } catch(err) {
       if (msg) msg.textContent = '❌ 讀取失敗：' + err.message;
     }
     input.value = '';
   };
   reader.readAsArrayBuffer(file);
+}
+
+function renderShelfLifeUploadPreview(items) {
+  // show a compact preview table of what will be applied
+  let el = document.getElementById('sl-upload-preview-list');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'sl-upload-preview-list';
+    el.style.cssText = 'width:100%;max-height:200px;overflow:auto;font-size:0.75rem;border:1px solid #eee;border-radius:4px;background:#fff;';
+    document.getElementById('sl-upload-preview').appendChild(el);
+  }
+  const rows = items.slice(0, 50).map(function(it) {
+    const shortSku = it.sku.indexOf('_S_') > -1 ? it.sku.split('_S_').pop() : it.sku;
+    return '<tr><td style="padding:2px 8px;border-bottom:1px solid #f0f0f0;">' + it.sku + '</td><td style="padding:2px 8px;border-bottom:1px solid #f0f0f0;font-weight:700;">' + it.value + ' 日</td></tr>';
+  }).join('');
+  el.innerHTML = '<table style="width:100%;border-collapse:collapse;"><tr style="background:#fafafa;"><th style="padding:4px 8px;text-align:left;">SKU</th><th style="padding:4px 8px;text-align:left;">建議值</th></tr>' + rows + (items.length > 50 ? '<tr><td colspan="2" style="padding:4px 8px;color:var(--text-dim);">… 仲有 ' + (items.length - 50) + ' 個</td></tr>' : '') + '</table>';
+}
+
+function confirmShelfLifeUpload() {
+  const items = window.__slUploadPreview || [];
+  const msg = document.getElementById('sl-upload-msg');
+  if (items.length === 0) { if (msg) msg.textContent = '⚠️ 冇待確認資料'; return; }
+  let q = [];
+  try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+  let added = 0, updated = 0;
+  items.forEach(function(it) {
+    const idx = q.findIndex(function(p) { return p.sku === it.sku; });
+    if (idx >= 0) { q[idx].value = it.value; updated++; }
+    else { q.push({ sku: it.sku, value: it.value, added_at: new Date().toISOString() }); added++; }
+  });
+  localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
+  // also update dashboard suggested values live (window.__slWarnings)
+  if (window.__slWarnings) {
+    const bySku = {};
+    items.forEach(function(it) { bySku[it.sku] = it.value; });
+    window.__slWarnings.forEach(function(w) { if (bySku[w.sku] != null) w.suggested = bySku[w.sku]; });
+  }
+  // hide preview
+  const preview = document.getElementById('sl-upload-preview');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+  window.__slUploadPreview = null;
+  if (msg) msg.textContent = '✅ 已套用 ' + added + ' 個新增 + ' + updated + ' 個更新（隊列總數 ' + q.length + '）';
+  renderShelfLifeCheck();
+  const bar = document.getElementById('shelf-life-queue-bar');
+  if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelShelfLifeUpload() {
+  window.__slUploadPreview = null;
+  const preview = document.getElementById('sl-upload-preview');
+  if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+  const msg = document.getElementById('sl-upload-msg');
+  if (msg) msg.textContent = '✖️ 已取消';
 }
 
 function batchQueue(filter) {

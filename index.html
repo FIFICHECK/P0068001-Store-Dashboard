@@ -590,6 +590,13 @@
       <span>對比 MMS 商品管理「最短保質期」與 GreenLab 臨期要求 — 只顯示有問題嘅 SKU（未填 / 低於要求）</span>
       <span id="shelf-life-check-meta" class="table-count" style="margin-left:auto;"></span>
     </div>
+    <div id="shelf-life-upload-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#fff3e0;border:1px solid #ffcc80;border-radius:6px;padding:10px 14px;margin:10px 0;">
+      <span style="font-weight:700;">📤 Upload Excel → Batch Update</span>
+      <button onclick="document.getElementById('sl-excel-input').click()" style="background:#ef6c00;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">📁 揀選 Excel (.xlsx / .csv)</button>
+      <input type="file" id="sl-excel-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleShelfLifeExcelUpload(this)">
+      <span style="color:var(--text-dim);font-size:0.75rem;">格式：header 含 SKU + 建議到期日（或 suggested / value / 最短保質期）— 每行會加入更新隊列</span>
+      <span id="sl-upload-msg" style="color:var(--accent);font-size:0.8rem;"></span>
+    </div>
     <div id="shelf-life-search-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#eef7ee;border:1px solid #b7dfb7;border-radius:6px;padding:10px 14px;margin:10px 0;">
       <span style="font-weight:700;">🔍 搜尋 / 篩選</span>
       <input id="sl-search-input" type="text" placeholder="搜尋 SKU / 名稱 / Primary Cat Code…" oninput="applyShelfLifeFilters()" style="flex:1;min-width:200px;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;">
@@ -1338,6 +1345,55 @@ function clearShelfLifeFilters() {
   const ids = ['sl-search-input', 'sl-filter-cat', 'sl-filter-status', 'sl-filter-greenlab', 'sl-filter-dp', 'sl-filter-suggested', 'sl-filter-check'];
   ids.forEach(function(id) { const el = document.getElementById(id); if (el) el.value = ''; });
   applyShelfLifeFilters();
+}
+
+function handleShelfLifeExcelUpload(input) {
+  const file = input.files && input.files[0];
+  const msg = document.getElementById('sl-upload-msg');
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      let rows = [];
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (rows.length === 0) { if (msg) msg.textContent = '⚠️ Excel 冇資料'; return; }
+      // find columns: sku + value
+      const keys = Object.keys(rows[0]);
+      const lower = keys.map(function(k) { return String(k).toLowerCase().replace(/\s+/g, ''); });
+      const skuKey = keys.find(function(k) { return /sku|sku_id|store_sku/i.test(k); });
+      const valKey = keys.find(function(k) { return /建議到期日|suggested|value|最短保質期|days|日數|minimumshelflife/i.test(k); });
+      if (!skuKey) { if (msg) msg.textContent = '⚠️ 搵唔到 SKU column（需要 SKU / sku_id）'; return; }
+      if (!valKey) { if (msg) msg.textContent = '⚠️ 搵唔到 建議值 column（需要 建議到期日 / suggested / value）'; return; }
+      let q = [];
+      try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(err) {}
+      let added = 0, skipped = 0;
+      rows.forEach(function(r) {
+        let sku = String(r[skuKey] || '').trim();
+        if (!sku) return;
+        // normalize: if user pasted bare SKU without store prefix, add it
+        if (sku.indexOf('_S_') === -1) sku = 'P0068001_S_' + sku;
+        const rawVal = String(r[valKey] || '').trim();
+        const val = parseInt(rawVal.replace(/[^0-9]/g, ''), 10);
+        if (!(val > 0)) { skipped++; return; }
+        if (!q.some(function(p) { return p.sku === sku; })) {
+          q.push({ sku: sku, value: val, added_at: new Date().toISOString() });
+          added++;
+        }
+      });
+      localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
+      if (msg) msg.textContent = '✅ 已加入 ' + added + ' 個 SKU（跳過 ' + skipped + ' 個無效）';
+      renderShelfLifeCheck();
+      const bar = document.getElementById('shelf-life-queue-bar');
+      if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch(err) {
+      if (msg) msg.textContent = '❌ 讀取失敗：' + err.message;
+    }
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 function batchQueue(filter) {

@@ -643,7 +643,37 @@
     <div class="trend-table-block">
       <div class="trend-table-header">
         <span class="tt-title">🔍 問題 SKU 清單 &nbsp;<span style="color:var(--text-dim);font-weight:400;font-size:0.8rem;">Needs Fix · 每日更新</span></span>
-        <span id="shelf-life-check-count" class="table-count"></span>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+          <span id="shelf-life-check-count" class="table-count"></span>
+          <button onclick="toggleShelfLifeHelp()" title="教學說明" style="background:#e53935;color:#fff;border:none;border-radius:50%;width:28px;height:28px;font-size:1rem;font-weight:700;cursor:pointer;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.2);">?</button>
+        </span>
+      </div>
+      <div id="shelf-life-help" style="display:none;background:#fff5f5;border:2px solid #ef9a9a;border-radius:8px;padding:16px 18px;margin:10px 0;font-size:0.85rem;line-height:1.7;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <span style="font-weight:700;font-size:1rem;color:#c62828;">📖 保質期檢查教學</span>
+          <button onclick="toggleShelfLifeHelp()" style="background:#eee;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:0.8rem;">✖️ 關閉</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">
+          <div style="background:#fff;border:1px solid #f0d0d0;border-radius:6px;padding:12px;">
+            <div style="font-weight:700;color:#c62828;margin-bottom:6px;">① 睇數據</div>
+            <div>🔍 <b>搜尋</b>：打 SKU / 名稱 / Primary Cat Code 即時篩</div>
+            <div>🎛️ <b>6 個篩選</b>：Primary Cat / Online-Offline / GreenLab 要求 / 最短保質期 / 建議到期日 / 檢查 Status</div>
+            <div>📊 <b>下載 Excel</b>：攞成個問題清單</div>
+          </div>
+          <div style="background:#fff;border:1px solid #f0d0d0;border-radius:6px;padding:12px;">
+            <div style="font-weight:700;color:#c62828;margin-bottom:6px;">② 揀要更新嘅 SKU</div>
+            <div>🔄 <b>單隻</b>：改「建議到期日」input → 撳「更新」</div>
+            <div>⚡ <b>Batch</b>：全部 / 只 ONLINE / 只 OFFLINE 一次過入隊列</div>
+            <div>📤 <b>Upload Excel</b>：讀 Excel 入隊列（兩步確認）</div>
+            <div>🗑️ <b>清空</b>：撳垃圾桶，或輸入 0 = 設返未填（MMS null）</div>
+          </div>
+          <div style="background:#fff;border:1px solid #f0d0d0;border-radius:6px;padding:12px;">
+            <div style="font-weight:700;color:#c62828;margin-bottom:6px;">③ 提交更新 MMS</div>
+            <div>🚀 <b>一撳更新 MMS</b>：自動通知 Hermes → 5 分鐘內自動改 MMS 最短保質期 → dashboard 自動 refresh</div>
+            <div>📥 <b>下載 JSON</b>：或者手動下載請求檔貼上 Discord</div>
+            <div style="margin-top:6px;color:var(--text-dim);">「建議到期日」= MUJI Suggested AA Group 建議值（例：零食 31 日、護膚 91 日），可自行改</div>
+          </div>
+        </div>
       </div>
       <div class="trend-table-scroll">
         <table class="trend-table">
@@ -1472,6 +1502,12 @@ function cancelShelfLifeUpload() {
   if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
   const msg = document.getElementById('sl-upload-msg');
   if (msg) msg.textContent = '✖️ 已取消';
+}
+
+function toggleShelfLifeHelp() {
+  const el = document.getElementById('shelf-life-help');
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 function batchQueue(filter) {

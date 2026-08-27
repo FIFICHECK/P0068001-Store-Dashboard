@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""P0068001 MMS Minimum Shelf Life updater.
+"""P0068001 MMS Minimum Shelf Life updater v3 — VERIFIED payload structure.
 
-Flow per SKU (verified 2026-08-27 with SKU 4550583916213 -> 91 SUCCESS):
-  1. POST /product/v2/products {page,size,skuId,buCode,disableInventory,orderBy,storeId} -> product uuid
-  2. Build minimal edit payload with minimum_shelf_life = suggested value
-  3. POST /product/single/edit {uuid, sku_id, product_id, minimum_shelf_life, ...} -> recordId
-  4. GET /product/checkSaveProductRecordsStatus?recordIds=<id> -> poll until SUCCESS/FAIL
-
-Auth: Bearer <accessToken> from MMS login (webLogin response).
+Verified 2026-08-27:
+  - UI save = POST /product/single/edit with body {"product": {snake_case dict}}
+  - The product dict == /product/v2/products product dict (32 keys incl. additional.hktv),
+    with minimum_shelf_life overridden
+  - Success example: SKU 4550583916213 -> 91 (SUCCESS, recordId 109500498)
+  - Poll: GET /product/checkSaveProductRecordsStatus?recordIds=<id> until SUCCESS
 
 Usage:
   python update_shelf_life_mms.py --token <jwt> --sku P0068001_S_4550583916213 --value 91
-  python update_shelf_life_mms.py --token <jwt> --json data/pending_updates.json   # batch from file
+  python update_shelf_life_mms.py --token <jwt> --json pending.json
+  (pending.json: {"updates": [{"sku": "...", "value": 91}, ...]})
 """
 import argparse
 import base64
@@ -29,6 +29,14 @@ HDR = ['-H', 'Content-Type: application/json',
        '-H', 'Origin: https://merchant.shoalter.com',
        '-H', 'Referer: https://merchant.shoalter.com/']
 
+KEEP = ['uuid', 'colour_families', 'color', 'size_system', 'size', 'option1', 'option2',
+        'option3', 'option1_value', 'option2_value', 'option3_value', 'barcodes',
+        'carton_size', 'weight_unit', 'weight', 'brand_id', 'merchant_id', 'sku_id',
+        'manufactured_country', 'packing_dimension_unit', 'packing_height', 'packing_length',
+        'packing_depth', 'packing_box_type', 'original_price', 'product_id',
+        'minimum_shelf_life', 'merchant_name', 'sku_name_en', 'sku_name_ch', 'sku_name_sc',
+        'additional']
+
 
 def call(method, path, token, body=None):
     cmd = ['curl', '-s', '-X', method, BASE + path]
@@ -39,11 +47,10 @@ def call(method, path, token, body=None):
     try:
         return json.loads(r.stdout)
     except Exception:
-        return {'raw': r.stdout[:300], 'status_code': r.returncode}
+        return {'raw': r.stdout[:300], 'code': r.returncode}
 
 
 def find_product(token, sku_id):
-    """Search product by SKU id (no store prefix) -> product dict."""
     body = {'page': 1, 'size': 20, 'skuId': sku_id, 'buCode': ['HKTV'],
             'disableInventory': True, 'orderBy': ['modified_time desc'],
             'storeId': [STORE_ID], 'forceOffline': None}
@@ -53,39 +60,47 @@ def find_product(token, sku_id):
     return j['data']['products'][0], j
 
 
-def build_payload(product, new_value):
-    """Build minimal /product/single/edit payload from the fetched product."""
-    hktv = (product.get('additional') or {}).get('hktv') or {}
-    p = {
-        'uuid': product.get('uuid'),
-        'sku_id': product.get('sku_id'),
-        'product_id': product.get('product_id'),
-        'minimum_shelf_life': new_value,
-        'bu': 'HKTV',
-        'storeId': hktv.get('store_id'),
-        'storefrontStoreCode': hktv.get('storefront_store_code'),
-        'store_sku_id': hktv.get('store_sku_id'),
-        'merchant_id': product.get('merchant_id'),
-        'brand_id': product.get('brand_id'),
-        'product_type_code': hktv.get('product_type_code'),
-        'primary_category_code': hktv.get('primary_category_code'),
-        'status': hktv.get('status'),
-    }
-    return {k: v for k, v in p.items() if v is not None}
+def build_edit_payload(product, new_value):
+    payload = {}
+    for k in KEEP:
+        if k in product:
+            payload[k] = product[k]
+    # Filter additional.hktv to the exact keys the UI edit form submits (53 keys) —
+    # extra keys from the v2 API (warehouse_code:None, force_offline, status, ...)
+    # break the server validation.
+    UI_HKTV_KEYS = ['stores', 'product_ready_method', 'delivery_method', 'product_type_code',
+                    'primary_category_code', 'visibility', 'currency', 'cost_record', 'style',
+                    'warranty', 'contract_no', 'is_primary_sku', 'sku_short_description_en',
+                    'sku_short_description_ch', 'sku_short_description_sc', 'selling_price',
+                    'discount_text_en', 'discount_text_ch', 'discount_text_sc', 'mall_dollar',
+                    'vip_mall_dollar', 'user_max', 'main_photo', 'variant_product_photo',
+                    'warehouse_id', 'packing_spec_en', 'packing_spec_ch', 'packing_spec_sc',
+                    'invoice_remarks_en', 'invoice_remarks_ch', 'invoice_remarks_sc', 'return_days',
+                    'product_ready_days', 'pickup_days', 'pickup_timeslot', 'goods_type',
+                    'warranty_period_unit', 'warranty_period', 'warranty_supplier_en',
+                    'warranty_supplier_ch', 'warranty_supplier_sc', 'service_centre_address_en',
+                    'service_centre_address_ch', 'service_centre_address_sc',
+                    'service_centre_email', 'service_centre_contact', 'warranty_remark_en',
+                    'warranty_remark_ch', 'warranty_remark_sc', 'online_status', 'storage_type',
+                    'store_id', 'delivery_district']
+    add = payload.get('additional') or {}
+    hktv = add.get('hktv') or {}
+    add['hktv'] = {k: hktv[k] for k in UI_HKTV_KEYS if k in hktv}
+    payload['additional'] = add
+    payload['minimum_shelf_life'] = new_value
+    return {'product': payload}
 
 
 def update_one(token, sku, value):
-    """Update one SKU. sku may be P0068001_S_xxx or bare xxx."""
     sku_id = sku.split('_S_')[-1] if '_S_' in sku else sku
     prod, j = find_product(token, sku_id)
     if prod is None:
         return {'sku': sku, 'ok': False, 'step': 'find', 'error': json.dumps(j, ensure_ascii=False)[:200]}
-    payload = build_payload(prod, value)
+    payload = build_edit_payload(prod, value)
     j = call('POST', '/product/single/edit', token, payload)
     if j.get('status') != 1 or not j.get('data', {}).get('recordId'):
         return {'sku': sku, 'ok': False, 'step': 'edit', 'error': json.dumps(j, ensure_ascii=False)[:300]}
     rid = j['data']['recordId']
-    # poll status
     for _ in range(6):
         time.sleep(2)
         st = call('GET', f'/product/checkSaveProductRecordsStatus?recordIds={rid}', token)
@@ -102,7 +117,7 @@ def main():
     ap.add_argument('--token', required=True)
     ap.add_argument('--sku', default=None)
     ap.add_argument('--value', type=int, default=None)
-    ap.add_argument('--json', default=None, help='JSON file: [{"sku": "...", "value": 91}, ...]')
+    ap.add_argument('--json', default=None)
     a = ap.parse_args()
 
     token = a.token
@@ -125,9 +140,9 @@ def main():
     for j in jobs:
         r = update_one(token, j['sku'], j.get('value', j.get('suggested')))
         results.append(r)
-        status = '✅' if r['ok'] else '❌'
+        status = 'OK' if r['ok'] else 'FAIL'
         print(f'{status} {r.get("sku")} -> {r.get("value")} {r.get("error", "")}')
-        time.sleep(1)
+        time.sleep(2)
 
     ok = sum(1 for r in results if r['ok'])
     print(f'\nDone: {ok}/{len(results)} succeeded')

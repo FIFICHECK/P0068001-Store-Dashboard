@@ -652,8 +652,10 @@
     <div id="shelf-life-queue-bar"></div>
     <div class="trend-table-block">
       <div class="trend-table-header">
-        <span class="tt-title">🔍 問題 SKU 清單 &nbsp;<span style="color:var(--text-dim);font-weight:400;font-size:0.8rem;">Needs Fix · 每日更新</span></span>
-        <span style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+        <span class="tt-title">🔍 問題 SKU 清單 &nbsp;<span style="color:var(--text-dim);font-weight:400;font-size:0.8rem;">Needs Fix · <span title="每日 cron: 14:00 自動 check + 更新" style="cursor:help;border-bottom:1px dotted var(--text-dim);">每日 14:00 自動更新</span></span></span>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <button onclick="triggerImmediateCheck()" id="sl-immediate-check-btn" title="撳一下即時跑 cron check（唔使等 14:00）" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:5px 12px;font-size:0.78rem;cursor:pointer;">🔄 即時更新</button>
+          <span id="shelf-life-countdown" title="距離下一次自動更新仲有幾耐" style="font-size:0.72rem;color:var(--text-dim);background:var(--bg-soft);border:1px solid var(--border);border-radius:4px;padding:4px 8px;">⏳ 計時中…</span>
           <span id="shelf-life-check-count" class="table-count"></span>
           <button onclick="toggleShelfLifeHelp()" title="教學說明" style="background:#e53935;color:#fff;border:none;border-radius:50%;width:28px;height:28px;font-size:1rem;font-weight:700;cursor:pointer;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.2);">?</button>
         </span>
@@ -1309,7 +1311,7 @@ function applyShelfLifeFilters() {
   if (!tbody || !window.__slWarnings) return;
   const filtered = applyShelfLifeFiltersTo(window.__slWarnings);
   const countEl = document.getElementById('sl-filter-count');
-  if (countEl) countEl.textContent = '顯示 ' + filtered.length + ' / ' + window.__slWarnings.length + ' 行';
+  if (countEl) countEl.textContent = '🎯 已揀選 ' + filtered.length + ' 個真實 SKU / 總共 ' + window.__slWarnings.length + ' 個';
   const pending = [];
   try { pending = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
   const pendingSet = {};
@@ -1523,6 +1525,58 @@ function toggleShelfLifeHelp() {
   const el = document.getElementById('shelf-life-help');
   if (!el) return;
   el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+
+/* ⏳ 每日 14:00 自動更新倒數計時器 */
+function startShelfLifeCountdown() {
+  const el = document.getElementById('shelf-life-countdown');
+  if (!el) return;
+  function tick() {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(14, 0, 0, 0);
+    if (now >= next) next.setDate(next.getDate() + 1); // 過咗 14:00 → 聽日 14:00
+    const diff = next - now;
+    const h = String(Math.floor(diff / 3600000)).padStart(2, '0');
+    const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
+    const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+    el.textContent = '⏳ 下次自動更新 ' + h + ':' + m + ':' + s;
+  }
+  tick();
+  setInterval(tick, 1000);
+}
+
+/* 🔄 即時更新：通知 Hermes cron 即刻跑 check（唔使等 14:00） */
+function triggerImmediateCheck() {
+  const btn = document.getElementById('sl-immediate-check-btn');
+  const msg = document.getElementById('sl-notify-msg');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '⏳ 更新中…';
+  const payload = JSON.stringify({ type: 'mms-check-request', source: 'dashboard', sent_at: new Date().toISOString() });
+  const b64 = btoa(unescape(encodeURIComponent(payload)));
+  fetch('https://discord.com/api/webhooks/1542513960224559254/REDACTED', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      content: '[MMS-CHECK-REQ] ' + b64,
+      username: 'Dashboard-MMS-Updater'
+    })
+  }).then(function(r) {
+    if (r.ok) {
+      btn.textContent = '✅ 已觸發';
+      if (msg) msg.innerHTML = '<span style="color:#2e7d32;font-weight:700;">✅ 已通知 Hermes 即時 check — 5 分鐘內會自動更新問題清單</span>';
+      setTimeout(function() { btn.disabled = false; btn.textContent = '🔄 即時更新'; }, 5000);
+    } else {
+      btn.textContent = '❌ 失敗';
+      if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 觸發失敗 HTTP ' + r.status + '</span>';
+      setTimeout(function() { btn.disabled = false; btn.textContent = '🔄 即時更新'; }, 5000);
+    }
+  }).catch(function() {
+    btn.textContent = '❌ 失敗';
+    if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 觸發失敗 — 網絡問題</span>';
+    setTimeout(function() { btn.disabled = false; btn.textContent = '🔄 即時更新'; }, 5000);
+  });
 }
 
 function batchQueue(filter) {
@@ -2151,6 +2205,7 @@ async function load() {
     setupTrendControls();
     loadTrend();
     // Load shelf life check (independent of trend data)
+    startShelfLifeCountdown();
     renderShelfLifeCheck();
   } catch (e) {
     document.getElementById('report-tbody').innerHTML =

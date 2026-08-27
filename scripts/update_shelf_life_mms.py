@@ -87,7 +87,8 @@ def build_edit_payload(product, new_value):
     hktv = add.get('hktv') or {}
     add['hktv'] = {k: hktv[k] for k in UI_HKTV_KEYS if k in hktv}
     payload['additional'] = add
-    payload['minimum_shelf_life'] = new_value
+    # 清空支援：value 係 None 或 0 → 設 null（未填狀態）
+    payload['minimum_shelf_life'] = None if new_value in (None, 0) else new_value
     return {'product': payload}
 
 
@@ -129,7 +130,7 @@ def main():
         jobs = json.load(open(a.json, encoding='utf-8'))
         if isinstance(jobs, dict) and 'updates' in jobs:
             jobs = jobs['updates']
-    elif a.sku and a.value:
+    elif a.sku and (a.value is not None):
         jobs = [{'sku': a.sku, 'value': a.value}]
     else:
         print('ERROR: need --sku --value OR --json')

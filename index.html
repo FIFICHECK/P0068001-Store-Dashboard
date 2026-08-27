@@ -637,7 +637,7 @@
       <button onclick="batchQueue('online')" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🟢 只加 ONLINE</button>
       <button onclick="batchQueue('offline')" style="background:#c62828;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🔴 只加 OFFLINE</button>
       <button onclick="downloadShelfLifeExcel()" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">📊 下載 Excel (.xlsx)</button>
-      <span style="color:var(--text-dim);font-size:0.75rem;">Batch 會用每行「建議到期日」input 嘅值</span>
+      <span style="color:var(--text-dim);font-size:0.75rem;">Batch 會用每行「建議到期日」input 嘅值（輸入 0 = 清空）</span>
     </div>
     <div id="shelf-life-queue-bar"></div>
     <div class="trend-table-block">
@@ -1314,7 +1314,7 @@ function applyShelfLifeFilters() {
       let q = [];
       try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
       if (btn.textContent.indexOf('✓') === -1) {
-        if (value > 0) {
+        if (value >= 0) {
           q = q.filter(function(p) { return p.sku !== sku; });
           q.push({ sku: sku, value: value, added_at: new Date().toISOString() });
         }
@@ -1327,6 +1327,23 @@ function applyShelfLifeFilters() {
         btn.textContent = '🔄 更新';
         btn.style.background = 'var(--accent)';
       }
+      updateShelfLifeQueueBar();
+    });
+  });
+  // clear button -> set queue value to 0 (清空)
+  tbody.querySelectorAll('.sl-clear-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const sku = btn.dataset.sku;
+      const row = btn.closest('tr');
+      const input = row ? row.querySelector('.sl-suggest-input') : null;
+      if (input) input.value = '0';
+      let q = [];
+      try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+      q = q.filter(function(p) { return p.sku !== sku; });
+      q.push({ sku: sku, value: 0, added_at: new Date().toISOString() });
+      localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
+      const b = row ? row.querySelector('.sl-update-btn') : null;
+      if (b) { b.textContent = '✓ 已排隊'; b.style.background = '#2e7d32'; }
       updateShelfLifeQueueBar();
     });
   });
@@ -1633,7 +1650,9 @@ function renderShelfLifeCheck() {
         const isQueued = pendingSet[w.sku] !== undefined;
         const queuedVal = pendingSet[w.sku] != null ? pendingSet[w.sku] : (w.suggested || '');
         // 建議到期日 = editable input (user can override, e.g. 14 -> 31 before update)
-        const sugInput = '<input type="number" min="1" class="sl-suggest-input" data-sku="' + w.sku + '" value="' + queuedVal + '" style="width:64px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;" title="可修改建議值後再更新">' +
+        // value 0 = 清空（會設 MMS null）
+        const sugInput = '<input type="number" min="0" class="sl-suggest-input" data-sku="' + w.sku + '" value="' + queuedVal + '" style="width:56px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;" title="輸入 0 = 清空（唔填）；其他 = 建議日數">' +
+          '<button class="sl-clear-btn" data-sku="' + w.sku + '" title="清空最短保質期" style="background:#eee;color:#c62828;border:1px solid #ddd;border-radius:4px;padding:3px 7px;font-size:0.75rem;cursor:pointer;margin-left:3px;">🗑️</button>' +
           (w.suggested_label ? '<br><span style="color:var(--text-dim);font-size:0.72rem;">' + w.suggested_label + '</span>' : '');
         const btn = isQueued
           ? '<button class="sl-update-btn" data-sku="' + w.sku + '" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">✓ 已排隊</button>'
@@ -1667,7 +1686,7 @@ function renderShelfLifeCheck() {
           let q = [];
           try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
           if (btn.textContent.indexOf('✓') === -1) {
-            if (value > 0) {
+            if (value >= 0) {
               q = q.filter(function(p) { return p.sku !== sku; });
               q.push({ sku: sku, value: value, added_at: new Date().toISOString() });
             }
@@ -1680,6 +1699,23 @@ function renderShelfLifeCheck() {
             btn.textContent = '🔄 更新';
             btn.style.background = 'var(--accent)';
           }
+          updateShelfLifeQueueBar();
+        });
+      });
+      // clear button -> set queue value to 0 (清空)
+      tbody.querySelectorAll('.sl-clear-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          const sku = btn.dataset.sku;
+          const row = btn.closest('tr');
+          const input = row ? row.querySelector('.sl-suggest-input') : null;
+          if (input) input.value = '0';
+          let q = [];
+          try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+          q = q.filter(function(p) { return p.sku !== sku; });
+          q.push({ sku: sku, value: 0, added_at: new Date().toISOString() });
+          localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
+          const b = row ? row.querySelector('.sl-update-btn') : null;
+          if (b) { b.textContent = '✓ 已排隊'; b.style.background = '#2e7d32'; }
           updateShelfLifeQueueBar();
         });
       });

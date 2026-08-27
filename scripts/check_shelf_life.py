@@ -139,7 +139,22 @@ def api_fetch_products(token, store_id):
     return all_products
 
 
-def check_rows(rows, gl):
+def match_suggested(cat, suggested_map):
+    """Longest-prefix match of primary_category_code against MUJI Suggested AA-group map.
+    Returns (days, matched_prefix) or (None, None)."""
+    if not cat or not suggested_map:
+        return None, None
+    # try longest prefix first (AA1115300 before AA1115)
+    for length in (12, 11, 10, 9, 8, 7, 6, 5, 4):
+        if len(cat) < length:
+            continue
+        pfx = cat[:length]
+        if pfx in suggested_map:
+            return suggested_map[pfx], pfx
+    return None, None
+
+
+def check_rows(rows, gl, suggested_map=None):
     """rows: list of (sku_display, name, online_status, cat, dp). Returns (warnings_list, total, checked)."""
     total = 0
     checked = 0
@@ -159,6 +174,11 @@ def check_rows(rows, gl):
         if gl_period is None:
             continue  # GreenLab no requirement
         checked += 1
+        # Rule 2: 建議到期日 = MUJI Suggested AA-group value (longest prefix), fallback GreenLab + 1
+        sug_days, sug_pfx = match_suggested(cat, suggested_map)
+        if sug_days is None:
+            sug_days = gl_period + 1
+            sug_pfx = ''
         if dp is None:
             warnings_list.append({
                 'sku': sku_display,
@@ -167,8 +187,8 @@ def check_rows(rows, gl):
                 'category_code': cat,
                 'dp': '',
                 'greenlab_required': gl_period,
-                'suggested': gl_period + 1,
-                'suggested_label': f'至少{gl_period + 1}日食用期',
+                'suggested': sug_days,
+                'suggested_label': f'至少{sug_days}日食用期' + (f'（{sug_pfx} 建議）' if sug_pfx else ''),
                 'status': 'missing',
             })
         elif dp < gl_period:
@@ -179,8 +199,8 @@ def check_rows(rows, gl):
                 'category_code': cat,
                 'dp': dp,
                 'greenlab_required': gl_period,
-                'suggested': gl_period + 1,
-                'suggested_label': f'至少{gl_period + 1}日食用期',
+                'suggested': sug_days,
+                'suggested_label': f'至少{sug_days}日食用期' + (f'（{sug_pfx} 建議）' if sug_pfx else ''),
                 'status': 'below',
             })
     return warnings_list, total, checked
@@ -200,6 +220,17 @@ def main():
 
     gl = load_greenlab(a.greenlab)
     print(f'GreenLab mapping: {len(gl)} categories')
+
+    # MUJI Suggested AA-group -> days map (data/suggested_shelf_life.json)
+    suggested_map = {}
+    sug_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'suggested_shelf_life.json')
+    try:
+        with open(sug_path, encoding='utf-8') as _f:
+            sug_raw = json.load(_f)
+        suggested_map = {k: v for k, v in sug_raw.items() if not k.startswith('_') and isinstance(v, int)}
+        print(f'MUJI Suggested map: {len(suggested_map)} AA groups')
+    except Exception as e:
+        print(f'  (no suggested map: {e})')
 
     warnings_list, total, checked = [], 0, 0
     source = ''
@@ -221,7 +252,7 @@ def main():
                 parse_dp(p.get('minimum_shelf_life')),
             ))
         source = f'MMS API {datetime.date.today().isoformat()}'
-        warnings_list, total, checked = check_rows(rows, gl)
+        warnings_list, total, checked = check_rows(rows, gl, suggested_map)
     else:
         export_files = a.exports
         if not export_files:
@@ -259,7 +290,7 @@ def main():
             print(f'  {os.path.basename(f)}: {n} rows')
             wb.close()
         source = os.path.basename(export_files[0]) if export_files else ''
-        warnings_list, total, checked = check_rows(rows, gl)
+        warnings_list, total, checked = check_rows(rows, gl, suggested_map)
 
     warnings_list.sort(key=lambda w: (w['status'], w['greenlab_required'], w['sku']))
     payload = {

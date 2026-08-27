@@ -590,6 +590,34 @@
       <span>對比 MMS 商品管理「最短保質期」與 GreenLab 臨期要求 — 只顯示有問題嘅 SKU（未填 / 低於要求）</span>
       <span id="shelf-life-check-meta" class="table-count" style="margin-left:auto;"></span>
     </div>
+    <div id="shelf-life-search-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#eef7ee;border:1px solid #b7dfb7;border-radius:6px;padding:10px 14px;margin:10px 0;">
+      <span style="font-weight:700;">🔍 搜尋 / 篩選</span>
+      <input id="sl-search-input" type="text" placeholder="搜尋 SKU / 名稱 / Primary Cat Code…" oninput="applyShelfLifeFilters()" style="flex:1;min-width:200px;padding:6px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;">
+      <select id="sl-filter-cat" onchange="applyShelfLifeFilters()" style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;max-width:180px;">
+        <option value="">Primary Cat Code: 全部</option>
+      </select>
+      <select id="sl-filter-status" onchange="applyShelfLifeFilters()" style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;">
+        <option value="">Online/Offline: 全部</option>
+        <option value="ONLINE">🟢 ONLINE</option>
+        <option value="OFFLINE">🔴 OFFLINE</option>
+      </select>
+      <select id="sl-filter-greenlab" onchange="applyShelfLifeFilters()" style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;">
+        <option value="">GreenLab 要求: 全部</option>
+      </select>
+      <select id="sl-filter-dp" onchange="applyShelfLifeFilters()" style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;">
+        <option value="">最短保質期: 全部</option>
+      </select>
+      <select id="sl-filter-suggested" onchange="applyShelfLifeFilters()" style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;">
+        <option value="">建議到期日: 全部</option>
+      </select>
+      <select id="sl-filter-check" onchange="applyShelfLifeFilters()" style="padding:6px 8px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;">
+        <option value="">檢查 Status: 全部</option>
+        <option value="missing">⚠️ 未填</option>
+        <option value="below">⚠️ 低於要求</option>
+      </select>
+      <button onclick="clearShelfLifeFilters()" style="background:#eee;color:#333;border:none;border-radius:4px;padding:6px 12px;font-size:0.8rem;cursor:pointer;">🗑️ 清空篩選</button>
+      <span id="sl-filter-count" style="color:var(--text-dim);font-size:0.75rem;"></span>
+    </div>
     <div id="shelf-life-batch-bar" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#f0f4ff;border:1px solid #b8c9f0;border-radius:6px;padding:10px 14px;margin:10px 0;">
       <span style="font-weight:700;">⚡ Batch 工具</span>
       <button onclick="batchQueue('all')" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">📥 全部加入隊列</button>
@@ -1168,6 +1196,150 @@ function renderSkuCharts(sku, mIdx) {
   });
 }
 
+function populateShelfLifeFilters(warnings) {
+  const catSel = document.getElementById('sl-filter-cat');
+  const glSel = document.getElementById('sl-filter-greenlab');
+  const dpSel = document.getElementById('sl-filter-dp');
+  const sugSel = document.getElementById('sl-filter-suggested');
+  if (!catSel) return;
+  const cats = {}; const gls = {}; const dps = {}; const sugs = {};
+  warnings.forEach(function(w) {
+    const c = w.category_code || '';
+    if (c) cats[c] = (cats[c] || 0) + 1;
+    if (w.greenlab_required != null) gls[w.greenlab_required] = (gls[w.greenlab_required] || 0) + 1;
+    if (w.dp) dps[w.dp] = (dps[w.dp] || 0) + 1; else dps['未填'] = (dps['未填'] || 0) + 1;
+    if (w.suggested != null) sugs[w.suggested] = (sugs[w.suggested] || 0) + 1;
+  });
+  catSel.innerHTML = '<option value="">Primary Cat Code: 全部</option>' +
+    Object.keys(cats).sort().map(function(c) { return '<option value="' + c + '">' + c + ' (' + cats[c] + ')</option>'; }).join('');
+  glSel.innerHTML = '<option value="">GreenLab 要求: 全部</option>' +
+    Object.keys(gls).sort(function(a, b) { return a - b; }).map(function(g) { return '<option value="' + g + '">' + g + ' 日 (' + gls[g] + ')</option>'; }).join('');
+  dpSel.innerHTML = '<option value="">最短保質期: 全部</option>' +
+    Object.keys(dps).sort(function(a, b) { return String(a) === '未填' ? 1 : (String(b) === '未填' ? -1 : a - b); }).map(function(d) { return '<option value="' + d + '">' + d + (String(d) === '未填' ? '' : ' 日') + ' (' + dps[d] + ')</option>'; }).join('');
+  sugSel.innerHTML = '<option value="">建議到期日: 全部</option>' +
+    Object.keys(sugs).sort(function(a, b) { return a - b; }).map(function(s) { return '<option value="' + s + '">' + s + ' 日 (' + sugs[s] + ')</option>'; }).join('');
+}
+
+function applyShelfLifeFiltersTo(warnings) {
+  const q = (document.getElementById('sl-search-input') ? document.getElementById('sl-search-input').value : '').trim().toLowerCase();
+  const cat = document.getElementById('sl-filter-cat') ? document.getElementById('sl-filter-cat').value : '';
+  const st = document.getElementById('sl-filter-status') ? document.getElementById('sl-filter-status').value : '';
+  const gl = document.getElementById('sl-filter-greenlab') ? document.getElementById('sl-filter-greenlab').value : '';
+  const dp = document.getElementById('sl-filter-dp') ? document.getElementById('sl-filter-dp').value : '';
+  const sug = document.getElementById('sl-filter-suggested') ? document.getElementById('sl-filter-suggested').value : '';
+  const chk = document.getElementById('sl-filter-check') ? document.getElementById('sl-filter-check').value : '';
+  return warnings.filter(function(w) {
+    if (q) {
+      const hay = ((w.sku || '') + ' ' + (w.name || '') + ' ' + (w.category_code || '')).toLowerCase();
+      if (hay.indexOf(q) === -1) return false;
+    }
+    if (cat && w.category_code !== cat) return false;
+    if (st && w.online_status !== st) return false;
+    if (gl !== '' && String(w.greenlab_required) !== gl) return false;
+    if (dp !== '') {
+      const dpv = w.dp ? String(w.dp) : '未填';
+      if (dpv !== dp) return false;
+    }
+    if (sug !== '' && String(w.suggested) !== sug) return false;
+    if (chk && w.status !== chk) return false;
+    return true;
+  });
+}
+
+function applyShelfLifeFilters() {
+  const tbody = document.getElementById('shelf-life-tbody');
+  if (!tbody || !window.__slWarnings) return;
+  const filtered = applyShelfLifeFiltersTo(window.__slWarnings);
+  const countEl = document.getElementById('sl-filter-count');
+  if (countEl) countEl.textContent = '顯示 ' + filtered.length + ' / ' + window.__slWarnings.length + ' 行';
+  const pending = [];
+  try { pending = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+  const pendingSet = {};
+  pending.forEach(function(p) { pendingSet[p.sku] = p.value; });
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">🔍 無符合篩選結果</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(function(w) {
+    const dp = w.dp ? w.dp + ' 日' : '<span style="color:var(--accent);">未填</span>';
+    const status = w.status === 'missing'
+      ? '<span style="color:var(--accent);font-weight:700;">⚠️ 未填</span>'
+      : '<span style="color:var(--accent);font-weight:700;">⚠️ 低於要求</span>';
+    const isQueued = pendingSet[w.sku] !== undefined;
+    const queuedVal = pendingSet[w.sku] != null ? pendingSet[w.sku] : (w.suggested || '');
+    const sugInput = '<input type="number" min="1" class="sl-suggest-input" data-sku="' + w.sku + '" value="' + queuedVal + '" style="width:64px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;" title="可修改建議值後再更新">' +
+      (w.suggested_label ? '<br><span style="color:var(--text-dim);font-size:0.72rem;">' + w.suggested_label + '</span>' : '');
+    const btn = isQueued
+      ? '<button class="sl-update-btn" data-sku="' + w.sku + '" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">✓ 已排隊</button>'
+      : '<button class="sl-update-btn" data-sku="' + w.sku + '" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">🔄 更新</button>';
+    const os = w.online_status;
+    const osCell = os === 'ONLINE'
+      ? '<span style="color:#2e7d32;font-weight:700;">🟢 ONLINE</span>'
+      : (os === 'OFFLINE'
+          ? '<span style="color:#c62828;font-weight:700;">🔴 OFFLINE</span>'
+          : '<span style="color:var(--text-dim);">—</span>');
+    return '<tr>' +
+      '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/HKTV_S0000033249_S_' + encodeURIComponent((w.sku || '').split('_S_').pop()) + '" target="_blank">' + w.sku + '</a></td>' +
+      '<td>' + (w.name || '—') + '</td>' +
+      '<td style="font-size:0.72rem;color:var(--text-dim);">' + (w.category_code || '—') + '</td>' +
+      '<td>' + osCell + '</td>' +
+      '<td>' + dp + '</td>' +
+      '<td>' + (w.greenlab_required != null ? w.greenlab_required + ' 日' : '—') + '</td>' +
+      '<td>' + sugInput + '</td>' +
+      '<td>' + status + '</td>' +
+      '<td>' + btn + '</td>' +
+      '</tr>';
+  }).join('');
+  // rebind update buttons
+  tbody.querySelectorAll('.sl-update-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const sku = btn.dataset.sku;
+      const row = btn.closest('tr');
+      const input = row ? row.querySelector('.sl-suggest-input') : null;
+      const rawVal = input ? input.value : '';
+      const value = parseInt(rawVal, 10);
+      let q = [];
+      try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+      if (btn.textContent.indexOf('✓') === -1) {
+        if (value > 0) {
+          q = q.filter(function(p) { return p.sku !== sku; });
+          q.push({ sku: sku, value: value, added_at: new Date().toISOString() });
+        }
+        localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
+        btn.textContent = '✓ 已排隊';
+        btn.style.background = '#2e7d32';
+      } else {
+        q = q.filter(function(p) { return p.sku !== sku; });
+        localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
+        btn.textContent = '🔄 更新';
+        btn.style.background = 'var(--accent)';
+      }
+      updateShelfLifeQueueBar();
+    });
+  });
+  // keep inputs in sync with queue
+  tbody.querySelectorAll('.sl-suggest-input').forEach(function(input) {
+    input.addEventListener('change', function() {
+      const sku = input.dataset.sku;
+      const val = parseInt(input.value, 10);
+      let q = [];
+      try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+      const idx = q.findIndex(function(p) { return p.sku === sku; });
+      if (idx >= 0) {
+        q[idx].value = val;
+        localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
+      }
+    });
+  });
+  updateShelfLifeQueueBar();
+}
+
+function clearShelfLifeFilters() {
+  const ids = ['sl-search-input', 'sl-filter-cat', 'sl-filter-status', 'sl-filter-greenlab', 'sl-filter-dp', 'sl-filter-suggested', 'sl-filter-check'];
+  ids.forEach(function(id) { const el = document.getElementById(id); if (el) el.value = ''; });
+  applyShelfLifeFilters();
+}
+
 function batchQueue(filter) {
   // gather all current warning rows from the DOM, read each editable input value
   const tbody = document.getElementById('shelf-life-tbody');
@@ -1282,6 +1454,7 @@ function renderShelfLifeCheck() {
         return;
       }
       const warnings = data.warnings || [];
+      window.__slWarnings = warnings;
       if (meta) meta.textContent = '更新: ' + (data.generated_at || '—') + ' · 檢查 ' + (data.checked_skus || 0) + ' SKU';
       if (count) count.textContent = '⚠️ ' + warnings.length + ' 個問題';
       if (thead) {
@@ -1291,15 +1464,19 @@ function renderShelfLifeCheck() {
       }
       if (!tbody) return;
       if (warnings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty">✅ 全部符合要求 All SKUs meet GreenLab requirement</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="empty">✅ 全部符合要求 All SKUs meet GreenLab requirement</td></tr>';
         return;
       }
+      // populate filter dropdowns
+      populateShelfLifeFilters(warnings);
       // Load pending queue from localStorage
       let pending = [];
       try { pending = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
       const pendingSet = {};
       pending.forEach(function(p) { pendingSet[p.sku] = p.value; });
-      tbody.innerHTML = warnings.map(function(w) {
+      // render filtered subset
+      const filtered = applyShelfLifeFiltersTo(warnings);
+      tbody.innerHTML = filtered.map(function(w) {
         const dp = w.dp ? w.dp + ' 日' : '<span style="color:var(--accent);">未填</span>';
         const status = w.status === 'missing'
           ? '<span style="color:var(--accent);font-weight:700;">⚠️ 未填</span>'

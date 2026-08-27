@@ -97,7 +97,8 @@
   .panel-desc { color: var(--text-dim); font-size: 0.82rem; margin-bottom: 20px; }
   .chart-wrap { position: relative; height: 320px; }
 
-  .table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-gutter: stable; }
+  #report-scroll, #monthly-scroll { overflow-y: auto; }
   table { width: 100%; border-collapse: collapse; min-width: 560px; }
   .report-table { table-layout: fixed; }
   thead th {
@@ -701,11 +702,10 @@
       <!-- 📋 GreenLab + MUJI 到期日 Guideline（參考用）-->
       <div style="margin-top:14px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;overflow:hidden;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 14px;background:var(--bg-soft);border-bottom:1px solid var(--border);flex-wrap:wrap;">
-          <span style="font-weight:700;font-size:0.9rem;">📋 GreenLab + MUJI 到期日 Guideline <span style="color:var(--text-dim);font-weight:400;font-size:0.75rem;">（參考用 Reference）</span></span>
-          <span style="display:flex;align-items:center;gap:8px;">
+          <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:700;font-size:0.9rem;">📋 GreenLab + MUJI 到期日 Guideline <span style="color:var(--text-dim);font-weight:400;font-size:0.75rem;">（參考用 Reference）</span>
             <button onclick="downloadGuidelineExcel()" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:4px 12px;font-size:0.75rem;cursor:pointer;">📥 下載 Excel</button>
-            <button onclick="var el=document.getElementById('sl-guideline-body');el.style.display=el.style.display==='none'?'block':'none';this.textContent=el.style.display==='none'?'▶ 展開':'▼ 收埋';" style="background:#eee;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">▼ 收埋</button>
           </span>
+          <button onclick="var el=document.getElementById('sl-guideline-body');el.style.display=el.style.display==='none'?'block':'none';this.textContent=el.style.display==='none'?'▶ 展開':'▼ 收埋';" style="background:#eee;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">▼ 收埋</button>
         </div>
         <div id="sl-guideline-body" style="overflow-x:auto;">
           <table style="width:100%;border-collapse:collapse;font-size:0.78rem;min-width:560px;">
@@ -735,7 +735,7 @@
               <tr style="background:#fff3e0;"><td style="padding:6px 10px;border-bottom:1px solid #f0ece4;font-weight:700;white-space:nowrap;">AA1350</td><td style="padding:6px 10px;border-bottom:1px solid #f0ece4;">護理保健</td><td style="padding:6px 10px;border-bottom:1px solid #f0ece4;">90</td><td style="padding:6px 10px;border-bottom:1px solid #f0ece4;font-weight:700;color:var(--accent);">91 日</td></tr>
               <tr style="background:#fce4ec;"><td style="padding:6px 10px;border-bottom:1px solid #f0ece4;font-weight:700;white-space:nowrap;">AA1605 – AA1675</td><td style="padding:6px 10px;border-bottom:1px solid #f0ece4;">護膚化妝（防曬 護膚 化妝品）</td><td style="padding:6px 10px;border-bottom:1px solid #f0ece4;">21 / 60 / 90</td><td style="padding:6px 10px;border-bottom:1px solid #f0ece4;font-weight:700;color:var(--accent);">91 日</td></tr>
               <tr style="background:#fffde7;"><td style="padding:6px 10px;font-weight:700;white-space:nowrap;">AA1810</td><td style="padding:6px 10px;">家品傢俬</td><td style="padding:6px 10px;">90</td><td style="padding:6px 10px;font-weight:700;color:var(--accent);">91 日</td></tr>
-              <tr style="background:#ffe0b2;"><td style="padding:6px 10px;font-weight:700;white-space:nowrap;">AA8320</td><td style="padding:6px 10px;">寵物用品 Pet</td><td style="padding:6px 10px;">60</td><td style="padding:6px 10px;font-weight:700;color:var(--accent);">61 日</td></tr>
+              <tr style="background:#ffe0b2;"><td style="padding:6px 10px;font-weight:700;white-space:nowrap;">AA8320</td><td style="padding:6px 10px;">寵物用品</td><td style="padding:6px 10px;">60</td><td style="padding:6px 10px;font-weight:700;color:var(--accent);">61 日</td></tr>
             </tbody>
           </table>
         </div>
@@ -877,10 +877,8 @@ function renderTable(manifest) {
   const totalRows = filtered.length;
   if (totalRows > 7) {
     scroll.style.maxHeight = '380px';
-    scroll.style.overflowY = 'auto';
   } else {
     scroll.style.maxHeight = '';
-    scroll.style.overflowY = '';
   }
 
   months.forEach(function(mk) {
@@ -1113,10 +1111,8 @@ function renderMonthly(monthly) {
   // Scroll if more than 12 months
   if (filtered.length > 12) {
     scroll.style.maxHeight = '420px';
-    scroll.style.overflowY = 'auto';
   } else {
     scroll.style.maxHeight = '';
-    scroll.style.overflowY = '';
   }
   let html = '';
   filtered.forEach(function(m) {

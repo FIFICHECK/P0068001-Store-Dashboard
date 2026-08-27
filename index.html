@@ -1217,7 +1217,7 @@ function renderShelfLifeCheck() {
       if (count) count.textContent = '⚠️ ' + warnings.length + ' 個問題';
       if (thead) {
         thead.innerHTML = '<tr>' +
-          '<th>SKU</th><th>名稱 Name</th><th>品牌 Brand</th><th>最短保質期</th><th>GreenLab 要求</th><th>建議到期日</th><th>狀態 Status</th><th>更新 Update</th>' +
+          '<th>SKU</th><th>名稱 Name</th><th>狀態 (Online/Offline)</th><th>最短保質期</th><th>GreenLab 要求</th><th>建議到期日</th><th>檢查 Status</th><th>更新 Update</th>' +
           '</tr>';
       }
       if (!tbody) return;
@@ -1243,10 +1243,16 @@ function renderShelfLifeCheck() {
         const btn = isQueued
           ? '<button class="sl-update-btn" data-sku="' + w.sku + '" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">✓ 已排隊</button>'
           : '<button class="sl-update-btn" data-sku="' + w.sku + '" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">🔄 更新</button>';
+        const os = w.online_status;
+        const osCell = os === 'ONLINE'
+          ? '<span style="color:#2e7d32;font-weight:700;">🟢 ONLINE</span>'
+          : (os === 'OFFLINE'
+              ? '<span style="color:#c62828;font-weight:700;">🔴 OFFLINE</span>'
+              : '<span style="color:var(--text-dim);">—</span>');
         return '<tr>' +
-          '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/' + encodeURIComponent(w.sku) + '" target="_blank">' + w.sku + '</a></td>' +
+          '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/HKTV_S0000033249_S_' + encodeURIComponent((w.sku || '').split('_S_').pop()) + '" target="_blank">' + w.sku + '</a></td>' +
           '<td>' + (w.name || '—') + '</td>' +
-          '<td>' + (w.brand || '—') + '</td>' +
+          '<td>' + osCell + '</td>' +
           '<td>' + dp + '</td>' +
           '<td>' + (w.greenlab_required != null ? w.greenlab_required + ' 日' : '—') + '</td>' +
           '<td>' + sugInput + '</td>' +

@@ -140,12 +140,12 @@ def api_fetch_products(token, store_id):
 
 
 def check_rows(rows, gl):
-    """rows: list of (sku_display, name, brand, cat, dp). Returns (warnings_list, total, checked)."""
+    """rows: list of (sku_display, name, online_status, cat, dp). Returns (warnings_list, total, checked)."""
     total = 0
     checked = 0
     warnings_list = []
     seen = set()
-    for sku_display, name, brand, cat_raw, dp in rows:
+    for sku_display, name, online_status, cat_raw, dp in rows:
         if not sku_display or sku_display in seen:
             continue
         seen.add(sku_display)
@@ -163,7 +163,7 @@ def check_rows(rows, gl):
             warnings_list.append({
                 'sku': sku_display,
                 'name': name or '',
-                'brand': brand or '',
+                'online_status': online_status or '',
                 'category_code': cat,
                 'dp': '',
                 'greenlab_required': gl_period,
@@ -175,7 +175,7 @@ def check_rows(rows, gl):
             warnings_list.append({
                 'sku': sku_display,
                 'name': name or '',
-                'brand': brand or '',
+                'online_status': online_status or '',
                 'category_code': cat,
                 'dp': dp,
                 'greenlab_required': gl_period,
@@ -216,7 +216,7 @@ def main():
             rows.append((
                 hktv.get('store_sku_id') or p.get('sku_id'),
                 p.get('sku_name_ch') or p.get('sku_name_en') or '',
-                p.get('merchant_name') or '',
+                hktv.get('online_status') or '',
                 hktv.get('primary_category_code') or '',
                 parse_dp(p.get('minimum_shelf_life')),
             ))

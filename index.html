@@ -1565,7 +1565,7 @@ function downloadShelfLifeExcel() {
         lines.push([
           w.sku, w.name || '', w.category_code || '', w.online_status || '',
           w.dp || '', w.greenlab_required != null ? w.greenlab_required + ' 日' : '',
-          w.suggested != null ? w.suggested + ' 日' : '', w.status === 'missing' ? '未填' : '低於要求'
+          w.suggested != null ? w.suggested : '', w.status === 'missing' ? '未填' : '低於要求'
         ]);
       });
       const csv = '\uFEFF' + lines.map(function(r) {

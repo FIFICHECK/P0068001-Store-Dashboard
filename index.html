@@ -1519,22 +1519,54 @@ function downloadShelfLifeExcel() {
 }
 
 function updateShelfLifeQueueBar() {
-  const bar = document.getElementById('shelf-life-queue-bar');
-  if (!bar) return;
+  const el = document.getElementById('shelf-life-queue-bar');
+  if (!el) return;
   let q = [];
   try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
   if (q.length === 0) {
-    bar.innerHTML = '';
+    el.innerHTML = '';
     return;
   }
-  bar.innerHTML = '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:10px 14px;margin:10px 0;">' +
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:10px 14px;">' +
     '<span style="font-weight:700;">📤 待更新 ' + q.length + ' 個 SKU</span>' +
     '<button onclick="downloadShelfLifeQueue()" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">📥 下載更新請求 (.json)</button>' +
+    '<button onclick="notifyHermesUpdate()" style="background:#d32f2f;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🚀 一撳更新 MMS</button>' +
     '<button onclick="clearShelfLifeQueue()" style="background:#eee;color:#333;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🗑️ 清空</button>' +
-    '<span style="color:var(--text-dim);font-size:0.75rem;">建議值可自行修改（例如 14 → 31）先撳更新；下載 JSON 後貼上 Discord，Hermes 會自動更新 MMS 最短保質期</span>' +
-    '</div>';
+    '<span style="color:var(--text-dim);font-size:0.75rem;">建議值可自行修改（例如 14 → 31）先撳更新；🚀 撳咗會自動通知 Hermes 更新 MMS</span>' +
+    '</div>' +
+    '<div id="sl-notify-msg" style="margin-top:6px;font-size:0.8rem;"></div>';
 }
 
+function notifyHermesUpdate() {
+  const msg = document.getElementById('sl-notify-msg');
+  let q = [];
+  try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+  if (q.length === 0) {
+    if (msg) msg.innerHTML = '<span style="color:var(--accent);">⚠️ 隊列冇 SKU — 請先加入要更新嘅項目</span>';
+    return;
+  }
+  if (msg) msg.innerHTML = '<span style="color:var(--text-dim);">⏳ 正在通知 Hermes…</span>';
+  // Send to Hermes webhook (Discord #mms channel -> Hermes cron picks it up)
+  const payload = JSON.stringify({ type: 'mms-update-request', updates: q, source: 'dashboard', sent_at: new Date().toISOString() });
+  const b64 = btoa(unescape(encodeURIComponent(payload)));
+  fetch('https://discord.com/api/webhooks/1542513960224559254/REDACTED', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      content: '[MMS-UPDATE-REQ] ' + b64,
+      username: 'Dashboard-MMS-Updater'
+    })
+  }).then(function(r) {
+    if (r.ok) {
+      if (msg) msg.innerHTML = '<span style="color:#2e7d32;font-weight:700;">✅ 已通知 Hermes（' + q.length + ' 個 SKU）— 佢會自動更新 MMS，稍後喺呢度睇結果</span>';
+    } else {
+      if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 通知失敗 HTTP ' + r.status + ' — 請手動下載 JSON 貼上 Discord</span>';
+    }
+  }).catch(function() {
+    if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 通知失敗 — 請手動下載 JSON 貼上 Discord</span>';
+  });
+}
 function downloadShelfLifeQueue() {
   let q = [];
   try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}

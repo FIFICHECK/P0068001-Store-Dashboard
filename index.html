@@ -1173,7 +1173,7 @@ function updateShelfLifeQueueBar() {
     '<span style="font-weight:700;">📤 待更新 ' + q.length + ' 個 SKU</span>' +
     '<button onclick="downloadShelfLifeQueue()" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">📥 下載更新請求 (.json)</button>' +
     '<button onclick="clearShelfLifeQueue()" style="background:#eee;color:#333;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🗑️ 清空</button>' +
-    '<span style="color:var(--text-dim);font-size:0.75rem;">下載 JSON 後貼上 Discord，Hermes 會自動更新 MMS 最短保質期</span>' +
+    '<span style="color:var(--text-dim);font-size:0.75rem;">建議值可自行修改（例如 14 → 31）先撳更新；下載 JSON 後貼上 Discord，Hermes 會自動更新 MMS 最短保質期</span>' +
     '</div>';
 }
 
@@ -1235,31 +1235,38 @@ function renderShelfLifeCheck() {
         const status = w.status === 'missing'
           ? '<span style="color:var(--accent);font-weight:700;">⚠️ 未填</span>'
           : '<span style="color:var(--accent);font-weight:700;">⚠️ 低於要求</span>';
-        const sug = w.suggested != null ? w.suggested + ' 日' : '—';
         const isQueued = pendingSet[w.sku] !== undefined;
+        const queuedVal = pendingSet[w.sku] != null ? pendingSet[w.sku] : (w.suggested || '');
+        // 建議到期日 = editable input (user can override, e.g. 14 -> 31 before update)
+        const sugInput = '<input type="number" min="1" class="sl-suggest-input" data-sku="' + w.sku + '" value="' + queuedVal + '" style="width:64px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;" title="可修改建議值後再更新">' +
+          (w.suggested_label ? '<br><span style="color:var(--text-dim);font-size:0.72rem;">' + w.suggested_label + '</span>' : '');
         const btn = isQueued
-          ? '<button class="sl-update-btn" data-sku="' + w.sku + '" data-value="' + (w.suggested || '') + '" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">✓ 已排隊</button>'
-          : '<button class="sl-update-btn" data-sku="' + w.sku + '" data-value="' + (w.suggested || '') + '" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">🔄 更新</button>';
+          ? '<button class="sl-update-btn" data-sku="' + w.sku + '" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">✓ 已排隊</button>'
+          : '<button class="sl-update-btn" data-sku="' + w.sku + '" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">🔄 更新</button>';
         return '<tr>' +
           '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/' + encodeURIComponent(w.sku) + '" target="_blank">' + w.sku + '</a></td>' +
           '<td>' + (w.name || '—') + '</td>' +
           '<td>' + (w.brand || '—') + '</td>' +
           '<td>' + dp + '</td>' +
           '<td>' + (w.greenlab_required != null ? w.greenlab_required + ' 日' : '—') + '</td>' +
-          '<td>' + sug + (w.suggested_label ? '<br><span style="color:var(--text-dim);font-size:0.72rem;">' + w.suggested_label + '</span>' : '') + '</td>' +
+          '<td>' + sugInput + '</td>' +
           '<td>' + status + '</td>' +
           '<td>' + btn + '</td>' +
           '</tr>';
       }).join('');
-      // bind update buttons
+      // bind update buttons — read the editable input value at click time
       tbody.querySelectorAll('.sl-update-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
           const sku = btn.dataset.sku;
-          const value = parseInt(btn.dataset.value, 10);
+          const row = btn.closest('tr');
+          const input = row ? row.querySelector('.sl-suggest-input') : null;
+          const rawVal = input ? input.value : '';
+          const value = parseInt(rawVal, 10);
           let q = [];
           try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
           if (btn.textContent.indexOf('✓') === -1) {
-            if (!q.some(function(p) { return p.sku === sku; })) {
+            if (value > 0) {
+              q = q.filter(function(p) { return p.sku !== sku; });
               q.push({ sku: sku, value: value, added_at: new Date().toISOString() });
             }
             localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
@@ -1272,6 +1279,20 @@ function renderShelfLifeCheck() {
             btn.style.background = 'var(--accent)';
           }
           updateShelfLifeQueueBar();
+        });
+      });
+      // keep editable inputs in sync with the queue value when changed
+      tbody.querySelectorAll('.sl-suggest-input').forEach(function(input) {
+        input.addEventListener('change', function() {
+          const sku = input.dataset.sku;
+          const val = parseInt(input.value, 10);
+          let q = [];
+          try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+          const idx = q.findIndex(function(p) { return p.sku === sku; });
+          if (idx >= 0) {
+            q[idx].value = val;
+            localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
+          }
         });
       });
       updateShelfLifeQueueBar();

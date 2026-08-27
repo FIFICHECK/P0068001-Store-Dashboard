@@ -1,5 +1,25 @@
 [
   {
+    "date": "8月26日",
+    "date_iso": "2026-08-26",
+    "gmv": "$50,284.00",
+    "gmv_raw": 50284.0,
+    "orders": 599,
+    "qty": 730,
+    "timestamp": "23:59",
+    "filename": "ECOM-MMSNG_DAILY_ORDER_P0068001_20260826235959.xlsx"
+  },
+  {
+    "date": "8月25日",
+    "date_iso": "2026-08-25",
+    "gmv": "$20,412.00",
+    "gmv_raw": 20412.0,
+    "orders": 274,
+    "qty": 299,
+    "timestamp": "23:59",
+    "filename": "ECOM-MMSNG_DAILY_ORDER_P0068001_20260825235959.xlsx"
+  },
+  {
     "date": "8月24日",
     "date_iso": "2026-08-24",
     "gmv": "$28,186.80",

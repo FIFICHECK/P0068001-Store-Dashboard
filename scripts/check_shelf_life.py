@@ -167,6 +167,8 @@ def check_rows(rows, gl):
                 'category_code': cat,
                 'dp': '',
                 'greenlab_required': gl_period,
+                'suggested': gl_period + 1,
+                'suggested_label': f'至少{gl_period + 1}日食用期',
                 'status': 'missing',
             })
         elif dp < gl_period:
@@ -177,6 +179,8 @@ def check_rows(rows, gl):
                 'category_code': cat,
                 'dp': dp,
                 'greenlab_required': gl_period,
+                'suggested': gl_period + 1,
+                'suggested_label': f'至少{gl_period + 1}日食用期',
                 'status': 'below',
             })
     return warnings_list, total, checked

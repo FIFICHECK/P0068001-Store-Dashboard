@@ -590,6 +590,7 @@
       <span>對比 MMS 商品管理「最短保質期」與 GreenLab 臨期要求 — 只顯示有問題嘅 SKU（未填 / 低於要求）</span>
       <span id="shelf-life-check-meta" class="table-count" style="margin-left:auto;"></span>
     </div>
+    <div id="shelf-life-queue-bar"></div>
     <div class="trend-table-block">
       <div class="trend-table-header">
         <span class="tt-title">🔍 問題 SKU 清單 &nbsp;<span style="color:var(--text-dim);font-weight:400;font-size:0.8rem;">Needs Fix · 每日更新</span></span>
@@ -1159,6 +1160,43 @@ function renderSkuCharts(sku, mIdx) {
   });
 }
 
+function updateShelfLifeQueueBar() {
+  const bar = document.getElementById('shelf-life-queue-bar');
+  if (!bar) return;
+  let q = [];
+  try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+  if (q.length === 0) {
+    bar.innerHTML = '';
+    return;
+  }
+  bar.innerHTML = '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:10px 14px;margin:10px 0;">' +
+    '<span style="font-weight:700;">📤 待更新 ' + q.length + ' 個 SKU</span>' +
+    '<button onclick="downloadShelfLifeQueue()" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">📥 下載更新請求 (.json)</button>' +
+    '<button onclick="clearShelfLifeQueue()" style="background:#eee;color:#333;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🗑️ 清空</button>' +
+    '<span style="color:var(--text-dim);font-size:0.75rem;">下載 JSON 後貼上 Discord，Hermes 會自動更新 MMS 最短保質期</span>' +
+    '</div>';
+}
+
+function downloadShelfLifeQueue() {
+  let q = [];
+  try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+  if (q.length === 0) return;
+  const blob = new Blob([JSON.stringify({ updates: q }, null, 1)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'shelf_life_updates_' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 500);
+}
+
+function clearShelfLifeQueue() {
+  localStorage.removeItem('p0068001-shelf-life-pending');
+  updateShelfLifeQueueBar();
+  renderShelfLifeCheck();
+}
+
 function renderShelfLifeCheck() {
   fetch(SHELF_LIFE_URL + '?v=' + Date.now())
     .then(function(resp) { return resp.ok ? resp.json() : null; })
@@ -1179,28 +1217,64 @@ function renderShelfLifeCheck() {
       if (count) count.textContent = '⚠️ ' + warnings.length + ' 個問題';
       if (thead) {
         thead.innerHTML = '<tr>' +
-          '<th>SKU</th><th>名稱 Name</th><th>品牌 Brand</th><th>最短保質期</th><th>GreenLab 要求</th><th>狀態 Status</th>' +
+          '<th>SKU</th><th>名稱 Name</th><th>品牌 Brand</th><th>最短保質期</th><th>GreenLab 要求</th><th>建議到期日</th><th>狀態 Status</th><th>更新 Update</th>' +
           '</tr>';
       }
       if (!tbody) return;
       if (warnings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty">✅ 全部符合要求 All SKUs meet GreenLab requirement</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">✅ 全部符合要求 All SKUs meet GreenLab requirement</td></tr>';
         return;
       }
+      // Load pending queue from localStorage
+      let pending = [];
+      try { pending = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+      const pendingSet = {};
+      pending.forEach(function(p) { pendingSet[p.sku] = p.value; });
       tbody.innerHTML = warnings.map(function(w) {
         const dp = w.dp ? w.dp + ' 日' : '<span style="color:var(--accent);">未填</span>';
         const status = w.status === 'missing'
           ? '<span style="color:var(--accent);font-weight:700;">⚠️ 未填</span>'
           : '<span style="color:var(--accent);font-weight:700;">⚠️ 低於要求</span>';
+        const sug = w.suggested != null ? w.suggested + ' 日' : '—';
+        const isQueued = pendingSet[w.sku] !== undefined;
+        const btn = isQueued
+          ? '<button class="sl-update-btn" data-sku="' + w.sku + '" data-value="' + (w.suggested || '') + '" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">✓ 已排隊</button>'
+          : '<button class="sl-update-btn" data-sku="' + w.sku + '" data-value="' + (w.suggested || '') + '" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">🔄 更新</button>';
         return '<tr>' +
           '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/' + encodeURIComponent(w.sku) + '" target="_blank">' + w.sku + '</a></td>' +
           '<td>' + (w.name || '—') + '</td>' +
           '<td>' + (w.brand || '—') + '</td>' +
           '<td>' + dp + '</td>' +
           '<td>' + (w.greenlab_required != null ? w.greenlab_required + ' 日' : '—') + '</td>' +
+          '<td>' + sug + (w.suggested_label ? '<br><span style="color:var(--text-dim);font-size:0.72rem;">' + w.suggested_label + '</span>' : '') + '</td>' +
           '<td>' + status + '</td>' +
+          '<td>' + btn + '</td>' +
           '</tr>';
       }).join('');
+      // bind update buttons
+      tbody.querySelectorAll('.sl-update-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          const sku = btn.dataset.sku;
+          const value = parseInt(btn.dataset.value, 10);
+          let q = [];
+          try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
+          if (btn.textContent.indexOf('✓') === -1) {
+            if (!q.some(function(p) { return p.sku === sku; })) {
+              q.push({ sku: sku, value: value, added_at: new Date().toISOString() });
+            }
+            localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
+            btn.textContent = '✓ 已排隊';
+            btn.style.background = '#2e7d32';
+          } else {
+            q = q.filter(function(p) { return p.sku !== sku; });
+            localStorage.setItem('p0068001-shelf-life-pending', JSON.stringify(q));
+            btn.textContent = '🔄 更新';
+            btn.style.background = 'var(--accent)';
+          }
+          updateShelfLifeQueueBar();
+        });
+      });
+      updateShelfLifeQueueBar();
     })
     .catch(function() {
       const tbody = document.getElementById('shelf-life-tbody');

@@ -655,7 +655,6 @@
       <div class="trend-table-header">
         <span class="tt-title">🔍 問題 SKU 清單 &nbsp;<span style="color:var(--text-dim);font-weight:400;font-size:0.8rem;">Needs Fix · <span title="每日 cron: 14:00 自動 check + 更新" style="cursor:help;border-bottom:1px dotted var(--text-dim);">每日 14:00 自動更新</span></span></span>
         <span style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <button onclick="triggerImmediateCheck()" id="sl-immediate-check-btn" title="撳一下即時跑 cron check（唔使等 14:00）" style="background:#1565c0;color:#fff;border:none;border-radius:4px;padding:5px 12px;font-size:0.78rem;cursor:pointer;">🔄 即時更新</button>
           <span id="shelf-life-countdown" title="距離下一次自動更新仲有幾耐" style="font-size:0.72rem;color:var(--text-dim);background:var(--bg-soft);border:1px solid var(--border);border-radius:4px;padding:4px 8px;">⏳ 計時中…</span>
           <span id="shelf-life-check-count" class="table-count"></span>
           <button onclick="toggleShelfLifeHelp()" title="教學說明" style="background:#e53935;color:#fff;border:none;border-radius:50%;width:28px;height:28px;font-size:1rem;font-weight:700;cursor:pointer;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.2);">?</button>
@@ -683,8 +682,7 @@
             </div>
             <div style="background:#fff5f5;border:1px solid #f0d0d0;border-radius:6px;padding:12px;">
               <div style="font-weight:700;color:#c62828;margin-bottom:6px;">③ 提交更新 MMS</div>
-              <div>🚀 <b>一撳更新 MMS</b>：⚠️ 已停用（webhook 被濫用已刪除）— 用 📥 下載 JSON 貼 Discord 通知 Hermes</div>
-              <div>📥 <b>下載 JSON</b>：或者手動下載請求檔貼上 Discord</div>
+              <div>📥 <b>下載更新請求 (.json)</b>：下載後將 JSON 內容貼上 Discord 通知 Hermes，會幫你 login MMS 逐隻更新最短保質期</div>
               <div style="margin-top:6px;color:var(--text-dim);">「建議到期日」= MUJI Suggested AA Group 建議值（例：零食 31 日、護膚 91 日），可自行改</div>
             </div>
           </div>
@@ -1600,18 +1598,6 @@ function downloadGuidelineExcel() {
   XLSX.writeFile(wb, 'MUJI_GreenLab_Guideline_' + new Date().toISOString().slice(0, 10) + '.xlsx');
 }
 
-/* 🔄 即時更新：通知 Hermes cron 即刻跑 check（唔使等 14:00）
-   ⚠️ 2026-08-28 已停用：webhook 被公開 HTML scrape 而遭 spammer 濫用，已刪除。 */
-function triggerImmediateCheck() {
-  const btn = document.getElementById('sl-immediate-check-btn');
-  const msg = document.getElementById('sl-notify-msg');
-  if (!btn) return;
-  btn.disabled = true;
-  btn.textContent = '❌ 已停用';
-  if (msg) msg.innerHTML = '<span style="color:#c62828;font-weight:700;">⚠️ 即時更新已停用（webhook 被濫用已刪除）— 請直接等 14:00 自動檢查</span>';
-  setTimeout(function() { btn.disabled = false; btn.textContent = '🔄 即時更新'; }, 5000);
-}
-
 function batchQueue(filter) {
   // gather all current warning rows from the DOM, read each editable input value
   const tbody = document.getElementById('shelf-life-tbody');
@@ -1686,17 +1672,12 @@ function updateShelfLifeQueueBar() {
     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:10px 14px;">' +
     '<span style="font-weight:700;">📤 待更新 ' + q.length + ' 個 SKU</span>' +
     '<button onclick="downloadShelfLifeQueue()" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">📥 下載更新請求 (.json)</button>' +
-    '<button onclick="notifyHermesUpdate()" style="background:#d32f2f;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🚀 一撳更新 MMS</button>' +
     '<button onclick="clearShelfLifeQueue()" style="background:#eee;color:#333;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🗑️ 清空</button>' +
-    '<span style="color:var(--text-dim);font-size:0.75rem;">建議值可自行修改（例如 14 → 31）先撳更新；🚀 一撳更新 MMS 已停用 — 請用 📥 下載 JSON 貼上 Discord 通知 Hermes</span>' +
+    '<span style="color:var(--text-dim);font-size:0.75rem;">建議值可自行修改（例如 14 → 31）先撳更新；📥 下載 JSON 後貼上 Discord 通知 Hermes</span>' +
     '</div>' +
     '<div id="sl-notify-msg" style="margin-top:6px;font-size:0.8rem;"></div>';
 }
 
-function notifyHermesUpdate() {
-  const msg = document.getElementById('sl-notify-msg');
-  if (msg) msg.innerHTML = '<span style="color:#c62828;font-weight:700;">⚠️ 「一撳更新 MMS」已停用（webhook 被濫用已刪除）— 請用 📥 下載更新請求 (.json) 然後貼上 Discord 通知 Hermes</span>';
-}
 function downloadShelfLifeQueue() {
   let q = [];
   try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}

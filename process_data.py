@@ -97,28 +97,29 @@ def build_monthly_report(month_key, files):
     # Fix print date header
     ws_out.cell(row=2, column=2).value = datetime.now().strftime("%Y-%b-%d %H:%M:%S")
 
-    # Copy data rows (5+) from all files
+    # Copy data rows (5+) from all files — skip the header row (row 5 in each
+    # daily file is "Delivery Mode | Warehouse ID | ...") and any non-data rows.
+    # Same rule as extract_stats(): only rows with numeric GMV in col AA (27)
+    # count as order lines. (Fixed 2026-08-28: monthly merged previously
+    # included 1 duplicated header per daily file → order_lines inflated.)
     out_row = 5
     total_gmv = 0.0
-    total_qty = 0
+    total_qty = 0.0
     order_lines = 0
     for fpath in sorted(files):
         wb = openpyxl.load_workbook(fpath, data_only=True)
         ws = wb.active
         for r in range(5, ws.max_row + 1):
-            vals = []
-            has_data = False
-            for c in range(1, ws.max_column + 1):
-                v = ws.cell(row=r, column=c).value
-                vals.append(v)
-                if v is not None:
-                    has_data = True
-            if not has_data:
+            v27 = ws.cell(row=r, column=27).value
+            if not isinstance(v27, (int, float)):
                 continue
+            vals = []
+            for c in range(1, ws.max_column + 1):
+                vals.append(ws.cell(row=r, column=c).value)
             for c, v in enumerate(vals, start=1):
                 ws_out.cell(row=out_row, column=c).value = v
-            g = vals[26] if len(vals) > 26 and isinstance(vals[26], (int, float)) else 0
-            q = vals[23] if len(vals) > 23 and isinstance(vals[23], (int, float)) else 0
+            g = v27
+            q = vals[23] if len(vals) > 23 and isinstance(vals[23], (int, float)) else 0.0
             total_gmv += g
             total_qty += q
             order_lines += 1

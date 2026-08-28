@@ -1,0 +1,17 @@
+# ── 防 secret 洩漏（2026-08-28 加入）──
+# Discord webhook URL / token 類檔案一律唔准 commit
+*.env
+.env.*
+!.env.example
+*webhook*
+*_webhook*
+*.bak
+*.bak.*
+*.log
+*.pyc
+__pycache__/
+node_modules/
+.DS_Store
+.secret*
+*token*
+!*token*.md

@@ -683,7 +683,7 @@
             </div>
             <div style="background:#fff5f5;border:1px solid #f0d0d0;border-radius:6px;padding:12px;">
               <div style="font-weight:700;color:#c62828;margin-bottom:6px;">③ 提交更新 MMS</div>
-              <div>🚀 <b>一撳更新 MMS</b>：自動通知 Hermes → 5 分鐘內自動改 MMS 最短保質期 → dashboard 自動 refresh</div>
+              <div>🚀 <b>一撳更新 MMS</b>：⚠️ 已停用（webhook 被濫用已刪除）— 用 📥 下載 JSON 貼 Discord 通知 Hermes</div>
               <div>📥 <b>下載 JSON</b>：或者手動下載請求檔貼上 Discord</div>
               <div style="margin-top:6px;color:var(--text-dim);">「建議到期日」= MUJI Suggested AA Group 建議值（例：零食 31 日、護膚 91 日），可自行改</div>
             </div>
@@ -1600,37 +1600,16 @@ function downloadGuidelineExcel() {
   XLSX.writeFile(wb, 'MUJI_GreenLab_Guideline_' + new Date().toISOString().slice(0, 10) + '.xlsx');
 }
 
-/* 🔄 即時更新：通知 Hermes cron 即刻跑 check（唔使等 14:00） */
+/* 🔄 即時更新：通知 Hermes cron 即刻跑 check（唔使等 14:00）
+   ⚠️ 2026-08-28 已停用：webhook 被公開 HTML scrape 而遭 spammer 濫用，已刪除。 */
 function triggerImmediateCheck() {
   const btn = document.getElementById('sl-immediate-check-btn');
   const msg = document.getElementById('sl-notify-msg');
   if (!btn) return;
   btn.disabled = true;
-  btn.textContent = '⏳ 更新中…';
-  const payload = JSON.stringify({ type: 'mms-check-request', source: 'dashboard', sent_at: new Date().toISOString() });
-  const b64 = btoa(unescape(encodeURIComponent(payload)));
-  fetch('https://discord.com/api/webhooks/1542513960224559254/REDACTED', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      content: '[MMS-CHECK-REQ] ' + b64,
-      username: 'Dashboard-MMS-Updater'
-    })
-  }).then(function(r) {
-    if (r.ok) {
-      btn.textContent = '✅ 已觸發';
-      if (msg) msg.innerHTML = '<span style="color:#2e7d32;font-weight:700;">✅ 已通知 Hermes 即時 check — 5 分鐘內會自動更新問題清單</span>';
-      setTimeout(function() { btn.disabled = false; btn.textContent = '🔄 即時更新'; }, 5000);
-    } else {
-      btn.textContent = '❌ 失敗';
-      if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 觸發失敗 HTTP ' + r.status + '</span>';
-      setTimeout(function() { btn.disabled = false; btn.textContent = '🔄 即時更新'; }, 5000);
-    }
-  }).catch(function() {
-    btn.textContent = '❌ 失敗';
-    if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 觸發失敗 — 網絡問題</span>';
-    setTimeout(function() { btn.disabled = false; btn.textContent = '🔄 即時更新'; }, 5000);
-  });
+  btn.textContent = '❌ 已停用';
+  if (msg) msg.innerHTML = '<span style="color:#c62828;font-weight:700;">⚠️ 即時更新已停用（webhook 被濫用已刪除）— 請直接等 14:00 自動檢查</span>';
+  setTimeout(function() { btn.disabled = false; btn.textContent = '🔄 即時更新'; }, 5000);
 }
 
 function batchQueue(filter) {
@@ -1709,39 +1688,14 @@ function updateShelfLifeQueueBar() {
     '<button onclick="downloadShelfLifeQueue()" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">📥 下載更新請求 (.json)</button>' +
     '<button onclick="notifyHermesUpdate()" style="background:#d32f2f;color:#fff;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🚀 一撳更新 MMS</button>' +
     '<button onclick="clearShelfLifeQueue()" style="background:#eee;color:#333;border:none;border-radius:4px;padding:6px 14px;font-size:0.8rem;cursor:pointer;">🗑️ 清空</button>' +
-    '<span style="color:var(--text-dim);font-size:0.75rem;">建議值可自行修改（例如 14 → 31）先撳更新；🚀 撳咗會自動通知 Hermes 更新 MMS</span>' +
+    '<span style="color:var(--text-dim);font-size:0.75rem;">建議值可自行修改（例如 14 → 31）先撳更新；🚀 一撳更新 MMS 已停用 — 請用 📥 下載 JSON 貼上 Discord 通知 Hermes</span>' +
     '</div>' +
     '<div id="sl-notify-msg" style="margin-top:6px;font-size:0.8rem;"></div>';
 }
 
 function notifyHermesUpdate() {
   const msg = document.getElementById('sl-notify-msg');
-  let q = [];
-  try { q = JSON.parse(localStorage.getItem('p0068001-shelf-life-pending') || '[]'); } catch(e) {}
-  if (q.length === 0) {
-    if (msg) msg.innerHTML = '<span style="color:var(--accent);">⚠️ 隊列冇 SKU — 請先加入要更新嘅項目</span>';
-    return;
-  }
-  if (msg) msg.innerHTML = '<span style="color:var(--text-dim);">⏳ 正在通知 Hermes…</span>';
-  // Send to Hermes webhook (Discord #mms channel -> Hermes cron picks it up)
-  const payload = JSON.stringify({ type: 'mms-update-request', updates: q, source: 'dashboard', sent_at: new Date().toISOString() });
-  const b64 = btoa(unescape(encodeURIComponent(payload)));
-  fetch('https://discord.com/api/webhooks/1542513960224559254/REDACTED', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      content: '[MMS-UPDATE-REQ] ' + b64,
-      username: 'Dashboard-MMS-Updater'
-    })
-  }).then(function(r) {
-    if (r.ok) {
-      if (msg) msg.innerHTML = '<span style="color:#2e7d32;font-weight:700;">✅ 已通知 Hermes（' + q.length + ' 個 SKU）— 佢會自動更新 MMS，稍後喺呢度睇結果</span>';
-    } else {
-      if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 通知失敗 HTTP ' + r.status + ' — 請手動下載 JSON 貼上 Discord</span>';
-    }
-  }).catch(function() {
-    if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 通知失敗 — 請手動下載 JSON 貼上 Discord</span>';
-  });
+  if (msg) msg.innerHTML = '<span style="color:#c62828;font-weight:700;">⚠️ 「一撳更新 MMS」已停用（webhook 被濫用已刪除）— 請用 📥 下載更新請求 (.json) 然後貼上 Discord 通知 Hermes</span>';
 }
 function downloadShelfLifeQueue() {
   let q = [];

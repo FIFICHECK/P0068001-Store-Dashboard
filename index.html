@@ -910,7 +910,7 @@ function renderTable(manifest) {
         '<td>' + (r.orders != null ? r.orders.toLocaleString() : '—') + '</td>' +
         '<td>' + (r.qty != null ? r.qty.toLocaleString() : '—') + '</td>' +
         '<td>' + badge + '</td>' +
-        '<td><span style="color:var(--text-dim);font-size:0.75rem;cursor:help;" title="原始 XLSX 只限內部使用（已停止公開下載）">🔒 內部檔案</span></td>';
+        '<td><button class="dl-btn" onclick="downloadDailyExcel(\'' + (r.date_iso || r.date || '') + '\')" title="由該日 summary 即時生成（唔含內部詳細資料）">📥 下載 Excel</button></td>';
       tbody.appendChild(tr);
     });
   });
@@ -1143,6 +1143,28 @@ function renderMonthly(monthly) {
       '</tr>';
   });
   tbody.innerHTML = html;
+}
+
+// 每日訂單報表 Excel 下載 — 由該日 summary 即時生成（唔含內部詳細資料）
+function downloadDailyExcel(dateStr) {
+  if (typeof XLSX === 'undefined' || !fullManifest || fullManifest.length === 0) return;
+  const rec = fullManifest.filter(function(r) { return (r.date_iso || r.date || '') === dateStr; });
+  if (rec.length === 0) return;
+  const rows = rec.map(function(r) {
+    const gmvRaw = r.gmv_raw != null ? r.gmv_raw : (parseFloat(String(r.gmv || '').replace(/[$,]/g, '')) || 0);
+    return {
+      '日期 Date': r.date_iso || r.date || '',
+      'GMV': gmvRaw,
+      '訂單 Order Lines': r.orders != null ? Number(r.orders) : '',
+      '件數 Qty': r.qty != null ? Number(r.qty) : '',
+      '版本 Version': r.timestamp === '23:59' ? '23:59 最終版' : (r.timestamp || '—')
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 16 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Daily Summary');
+  XLSX.writeFile(wb, 'P0068001_Daily_' + dateStr + '.xlsx');
 }
 
 // 月度合併報表 Excel 下載 — 由 data/monthly_reports.json summary 即時生成（唔含內部詳細資料）

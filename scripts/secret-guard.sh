@@ -21,10 +21,11 @@ PATTERNS=(
   'ghp_[A-Za-z0-9]{36}'                                          # GitHub PAT
 )
 
-# 白名單: Access-Gate webhook (id WEBHOOK_ID_REDACTED) — 設計上公開嘅「訪問申請」通道
-# 前端必須直接 POST 申請 → 呢個 token 一定要喺 index.html
-# ⚠️ 只有呢一個 webhook 可以公開；其他 webhook (MMS-Updater 等) 一律照擋
-ALLOWLIST_WEBHOOK_IDS=('WEBHOOK_ID_REDACTED')
+# 白名單: 設計上公開嘅 webhook（前端必須直接 POST）— token 一定要喺前端檔案
+# 1. Access-Gate webhook (WEBHOOK_ID_REDACTED) — 已刪除，保留做記錄
+# 2. Access-Approver (WEBHOOK_ID_REDACTED) — approve.html 用，收「批准訪問」請求
+# ⚠️ 只有呢啲 webhook 可以公開；其他 webhook (MMS-Updater 等) 一律照擋
+ALLOWLIST_WEBHOOK_IDS=('WEBHOOK_ID_REDACTED' 'WEBHOOK_ID_REDACTED')
 
 FAIL=0
 for f in $FILES; do

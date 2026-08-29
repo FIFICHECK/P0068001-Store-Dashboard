@@ -21,3 +21,6 @@ node_modules/
 reports/order_reports/
 reports/product_exports/
 reports/monthly/
+
+# GreenLab 內部規則對照表（2026-08-29 安全評估後加入）— dashboard 用 suggested_shelf_life.json 已夠
+GreenLab.xlsx

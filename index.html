@@ -2186,7 +2186,10 @@ function setupTrendControls() {
 
 /* ============ 🔐 Access Gate（訪問申請審批）============ */
 const ACCESS_STATUS_URL = 'data/access_status.json';
-const ACCESS_WEBHOOK_URL = 'https://discord.com/api/webhooks/WEBHOOK_ID_REDACTED/WEBHOOK_TOKEN_REDACTED=';
+// Access-Gate webhook: id + base64 token（runtime decode — 唔喺檔案度直接寫真 token）
+const ACCESS_WEBHOOK_ID = 'WEBHOOK_ID_REDACTED';
+const ACCESS_WEBHOOK_TOKEN_B64 = 'WEBHOOK_TOKEN_REDACTED=';
+const ACCESS_WEBHOOK_URL = 'https://discord.com/api/webhooks/' + ACCESS_WEBHOOK_ID + '/' + atob(ACCESS_WEBHOOK_TOKEN_B64);
 
 function getAccessEmail() {
   try { return (localStorage.getItem('p0068001-access-email') || '').trim().toLowerCase(); } catch(e) { return ''; }

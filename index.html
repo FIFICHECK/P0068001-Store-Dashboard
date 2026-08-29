@@ -2218,22 +2218,13 @@ function submitAccessRequest() {
   if (!email || email.indexOf('@') < 1) { status.textContent = '⚠️ 請輸入有效 Email'; return; }
   status.textContent = '⏳ 送出申請中…';
   const adminEmail = decodeAdminEmail();
-  // 一次性 token（防 URL 被猜）
-  const token = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
-  const approveLink = location.origin + location.pathname.replace(/[^/]*$/, '') + 'approve.html?email=' + encodeURIComponent(email) + '&t=' + encodeURIComponent(token);
-  fetch('https://formsubmit.co/ajax/' + adminEmail, {
+  fetch('https://fificheck-access-gate.fificheck.workers.dev/submit', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({
-      email: email,
-      _subject: '🔐 P0068001 Dashboard 訪問申請',
-      _template: 'table',
-      _captcha: 'false',
-      '✅ 批准訪問 (Approve)': approveLink
-    })
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ site: 'P0068001', email: email })
   }).then(function() {
     try { localStorage.setItem('p0068001-access-email', email); } catch(e) {}
-    status.textContent = '✅ 已送出申請！管理員批准後，重新整理此頁即可進入。';
+    status.textContent = '✅ 已送出申請！管理員一撳批准，你重新整理此頁即可進入。';
   }).catch(function() {
     status.textContent = '❌ 送出失敗 — 請直接 email ' + adminEmail;
   });

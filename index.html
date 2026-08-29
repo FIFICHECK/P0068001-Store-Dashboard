@@ -457,24 +457,15 @@
 </style>
 </head>
 <body>
-<!-- 🔐 訪問申請 Gate（未 approve 前遮住成個 dashboard）-->
+<!-- 🔐 訪問申請 Gate（方案 A: email 申請 → admin 通知 → allowlist 控制進入）-->
 <div id="access-gate-overlay" style="position:fixed;inset:0;background:#f7f4ee;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
-  <div style="background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.15);max-width:440px;width:100%;padding:28px 26px;text-align:center;">
+  <div style="background:#fff;border:1px solid #e2ddd3;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.08);max-width:420px;width:100%;padding:36px 32px;text-align:center;">
     <div style="font-size:2rem;margin-bottom:8px;">🔐</div>
-    <h2 style="margin:0 0 6px;font-size:1.15rem;">P0068001 Store Dashboard</h2>
-    <div style="color:var(--text-dim);font-size:.8rem;margin-bottom:16px;">此頁面受保護 — 需經審批先可以瀏覽</div>
-    <div id="access-gate-form">
-      <input id="access-email" type="email" placeholder="請輸入公司 Email（例如 name@company.com）" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:4px;font-size:.85rem;box-sizing:border-box;margin-bottom:10px;" required>
-      <input id="access-reason" type="text" placeholder="訪問原因（可選填）" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:4px;font-size:.85rem;box-sizing:border-box;margin-bottom:12px;">
-      <button id="access-submit" onclick="submitAccessRequest()" style="width:100%;background:#1565c0;color:#fff;border:none;border-radius:4px;padding:11px;font-size:.9rem;cursor:pointer;font-weight:700;">📨 提交訪問申請</button>
-      <div id="access-gate-msg" style="margin-top:10px;font-size:.8rem;"></div>
-    </div>
-    <div id="access-gate-waiting" style="display:none;">
-      <div style="font-size:1.5rem;margin-bottom:6px;">⏳</div>
-      <div style="font-weight:700;font-size:.95rem;">已提交申請，等待審批中…</div>
-      <div style="color:var(--text-dim);font-size:.78rem;margin:6px 0 12px;">管理員確認後會自動解鎖，請保持此頁面開啟</div>
-      <div id="access-gate-timer" style="font-size:.75rem;color:var(--text-dim);"></div>
-    </div>
+    <h2 style="margin:0 0 10px;font-size:1.25rem;">受保護的 Dashboard</h2>
+    <p style="color:#8a857e;font-size:.9rem;margin:0 0 20px;line-height:1.6;">此 Dashboard 只供獲授權人士查閱。<br>請輸入你的 Email 申請訪問權限，管理員批准後即可進入。</p>
+    <input type="email" id="access-email" placeholder="你的 Email" autocomplete="email" style="width:100%;padding:11px 14px;border:1px solid #e2ddd3;border-radius:8px;font-size:1rem;box-sizing:border-box;margin-bottom:12px;color:#2f2f2f;">
+    <button id="access-submit" style="width:100%;padding:11px 14px;border:none;border-radius:8px;background:#c1002e;color:#fff;font-size:1rem;font-weight:600;cursor:pointer;">申請訪問</button>
+    <p id="access-gate-msg" style="margin-top:14px;font-size:.9rem;min-height:1.2em;"></p>
   </div>
 </div>
 <div class="container">
@@ -2184,107 +2175,63 @@ function setupTrendControls() {
   });
 }
 
-/* ============ 🔐 Access Gate（訪問申請審批）============ */
-const ACCESS_STATUS_URL = 'data/access_status.json';
-// Access-Gate webhook: id + base64 token（runtime decode — 唔喺檔案度直接寫真 token）
-const ACCESS_WEBHOOK_ID = 'WEBHOOK_ID_REDACTED';
-const ACCESS_WEBHOOK_TOKEN_B64 = 'WEBHOOK_TOKEN_REDACTED=';
-const ACCESS_WEBHOOK_URL = 'https://discord.com/api/webhooks/' + ACCESS_WEBHOOK_ID + '/' + atob(ACCESS_WEBHOOK_TOKEN_B64);
+/* ============ 🔐 Access Gate（方案 A: email 申請 → admin 通知 → allowlist）============ */
+const ALLOWLIST_URL = 'data/access_allowlist.json';
+const GATE_ADMIN_EMAIL = 'amVycnlAaGt0di5jb20uaGs=';   // 收訪問申請通知（base64 編碼避免直接公開）
 
-function getAccessEmail() {
-  try { return (localStorage.getItem('p0068001-access-email') || '').trim().toLowerCase(); } catch(e) { return ''; }
+function decodeAdminEmail() {
+  try { return atob(GATE_ADMIN_EMAIL); } catch(e) { return ''; }
 }
 
 function initAccessGate() {
-  const overlay = document.getElementById('access-gate-overlay');
-  if (!overlay) return;
-  const email = getAccessEmail();
-  if (email) {
-    // 已提交過 → check 係咪 approved
-    checkAccessStatus(function(approved) {
-      if (approved) { overlay.style.display = 'none'; }
-      else { showAccessWaiting(); startAccessPolling(); }
-    });
-  } else {
-    overlay.style.display = 'flex';
-  }
-}
-
-function showAccessWaiting() {
-  document.getElementById('access-gate-form').style.display = 'none';
-  document.getElementById('access-gate-waiting').style.display = 'block';
-}
-
-function startAccessPolling() {
-  let secs = 0;
-  const timer = document.getElementById('access-gate-timer');
-  setInterval(function() {
-    secs++;
-    if (timer) timer.textContent = '已等待 ' + Math.floor(secs / 60) + ' 分 ' + (secs % 60) + ' 秒';
-  }, 1000);
-  // poll 每 15 秒
-  setInterval(function() {
-    checkAccessStatus(function(approved) {
-      if (approved) {
-        const overlay = document.getElementById('access-gate-overlay');
-        overlay.style.display = 'none';
-        const msg = document.getElementById('access-gate-msg');
-        if (msg) msg.innerHTML = '<span style="color:#2e7d32;font-weight:700;">✅ 已批准！歡迎瀏覽</span>';
+  const gate = document.getElementById('access-gate-overlay');
+  const status = document.getElementById('access-gate-msg');
+  if (!gate) return;
+  // 綁定 submit button（同 H6183001 一樣）
+  const submitBtn = document.getElementById('access-submit');
+  if (submitBtn) submitBtn.addEventListener('click', submitAccessRequest);
+  const input = document.getElementById('access-email');
+  if (input) input.addEventListener('keydown', function(ev) { if (ev.key === 'Enter') submitAccessRequest(); });
+  const saved = localStorage.getItem('p0068001-access-email');
+  let list = [];
+  fetch(ALLOWLIST_URL + '?v=' + Date.now())
+    .then(function(r) { return r.ok ? r.json() : []; })
+    .then(function(lst) {
+      const norm = (lst || []).map(String).map(function(s) { return s.trim().toLowerCase(); });
+      if (saved && norm.indexOf(saved.toLowerCase()) >= 0) {
+        gate.style.display = 'none';
+        return;
       }
-    });
-  }, 15000);
-}
-
-function checkAccessStatus(cb) {
-  const email = getAccessEmail();
-  if (!email) { if (cb) cb(false); return; }
-  fetch(ACCESS_STATUS_URL + '?v=' + Date.now())
-    .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function(status) {
-      if (!status || !status.approved) { if (cb) cb(false); return; }
-      const approved = status.approved.indexOf(email) !== -1;
-      if (cb) cb(approved);
+      gate.style.display = 'flex';
     })
-    .catch(function() { if (cb) cb(false); });
+    .catch(function() {
+      // offline — 照顯示 gate
+      gate.style.display = 'flex';
+    });
 }
 
 function submitAccessRequest() {
-  const emailInput = document.getElementById('access-email');
-  const reasonInput = document.getElementById('access-reason');
-  const msg = document.getElementById('access-gate-msg');
-  const email = (emailInput.value || '').trim().toLowerCase();
-  if (!email || email.indexOf('@') === -1) {
-    if (msg) msg.innerHTML = '<span style="color:#c62828;">⚠️ 請輸入有效 Email</span>';
-    return;
-  }
-  const reason = (reasonInput.value || '').trim();
-  // 儲存 email
-  try { localStorage.setItem('p0068001-access-email', email); } catch(e) {}
-  const btn = document.getElementById('access-submit');
-  btn.disabled = true;
-  btn.textContent = '⏳ 提交中…';
-  if (msg) msg.innerHTML = '<span style="color:var(--text-dim);">📤 正在送出申請…</span>';
-  // POST 去 Discord webhook
-  const payload = JSON.stringify({ email: email, reason: reason, ts: new Date().toISOString() });
-  const b64 = btoa(unescape(encodeURIComponent(payload)));
-  fetch(ACCESS_WEBHOOK_URL, {
+  const input = document.getElementById('access-email');
+  const status = document.getElementById('access-gate-msg');
+  if (!input || !status) return;
+  const email = (input.value || '').trim().toLowerCase();
+  if (!email || email.indexOf('@') < 1) { status.textContent = '⚠️ 請輸入有效 Email'; return; }
+  status.textContent = '⏳ 送出申請中…';
+  const adminEmail = decodeAdminEmail();
+  fetch('https://formsubmit.co/ajax/' + adminEmail, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: '[ACCESS-REQ] ' + b64, username: 'Access-Gate' })
-  }).then(function(r) {
-    if (r.ok) {
-      if (msg) msg.innerHTML = '<span style="color:#2e7d32;font-weight:700;">✅ 申請已送出！等待管理員審批…</span>';
-      showAccessWaiting();
-      startAccessPolling();
-    } else {
-      btn.disabled = false;
-      btn.textContent = '📨 提交訪問申請';
-      if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 送出失敗 HTTP ' + r.status + ' — 請再試</span>';
-    }
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({
+      email: email,
+      _subject: '🔐 P0068001 Dashboard 訪問申請',
+      _template: 'table',
+      _captcha: 'false'
+    })
+  }).then(function() {
+    try { localStorage.setItem('p0068001-access-email', email); } catch(e) {}
+    status.textContent = '✅ 已送出申請！管理員批准後，重新整理此頁即可進入。';
   }).catch(function() {
-    btn.disabled = false;
-    btn.textContent = '📨 提交訪問申請';
-    if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 網絡錯誤 — 請再試</span>';
+    status.textContent = '❌ 送出失敗 — 請直接 email ' + adminEmail;
   });
 }
 /* ============ 🔐 Access Gate end ============ */

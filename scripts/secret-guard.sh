@@ -21,30 +21,14 @@ PATTERNS=(
   'ghp_[A-Za-z0-9]{36}'                                          # GitHub PAT
 )
 
-# 白名單: 設計上公開嘅 webhook（前端必須直接 POST）— token 一定要喺前端檔案
-# 1. Access-Gate webhook (WEBHOOK_ID_REDACTED) — 已刪除，保留做記錄
-# 2. Access-Approver (WEBHOOK_ID_REDACTED) — approve.html 用，收「批准訪問」請求
-# ⚠️ 只有呢啲 webhook 可以公開；其他 webhook (MMS-Updater 等) 一律照擋
-ALLOWLIST_WEBHOOK_IDS=('WEBHOOK_ID_REDACTED' 'WEBHOOK_ID_REDACTED')
+# ⚠️ 2026-08-29: Access-Gate / Access-Approver webhook 已刪除（改用 Cloudflare worker）
+# 而家冇任何公開 webhook — Discord webhook URL 一律照擋
 
 FAIL=0
 for f in $FILES; do
   [ -f "$f" ] || continue
   for p in "${PATTERNS[@]}"; do
     if grep -qE "$p" "$f" 2>/dev/null; then
-      # 檢查係咪白名單 webhook
-      ALLOWED=0
-      for wid in "${ALLOWLIST_WEBHOOK_IDS[@]}"; do
-        if grep -qE "discord(app)?\.com/api/webhooks/$wid/" "$f" 2>/dev/null; then
-          ALLOWED=1
-        fi
-      done
-      # 如果檔案同時含有白名單 webhook 同其他 webhook → 仍然要擋
-      OTHER=$(grep -oE 'discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]{10,}' "$f" 2>/dev/null | grep -vE "^discord(app)?\.com/api/webhooks/(${ALLOWLIST_WEBHOOK_IDS[*]// /|})/" | wc -l)
-      if [ "$ALLOWED" -eq 1 ] && [ "$OTHER" -eq 0 ]; then
-        echo "ℹ️ [secret-guard] $f 只有 Access-Gate 白名單 webhook（公開申請通道）— 允許"
-        continue
-      fi
       echo "❌ [secret-guard] $f 含有疑似 secret (pattern: $p)"
       echo "   commit 已拒絕。請移除 secret，改用 config/env 檔（並確保 gitignored）。"
       FAIL=1

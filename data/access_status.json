@@ -1,4 +1,6 @@
 {
-  "approved": [],
-  "updated_at": "2026-08-29 14:34:05"
+  "approved": [
+    "visitor-test@example.com"
+  ],
+  "updated_at": "2026-08-29 14:35:08"
 }

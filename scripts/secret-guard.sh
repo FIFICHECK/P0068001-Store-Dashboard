@@ -16,17 +16,34 @@ fi
 # pattern list: 中咗任何一個 → 拒絕 commit
 PATTERNS=(
   'discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]{10,}'   # 真實 Discord webhook URL (有 token)
-  'discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]{10,}'  # (兜底)
   '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'             # 私鑰
   'AKIA[0-9A-Z]{16}'                                             # AWS access key
   'ghp_[A-Za-z0-9]{36}'                                          # GitHub PAT
 )
+
+# 白名單: Access-Gate webhook (id WEBHOOK_ID_REDACTED) — 設計上公開嘅「訪問申請」通道
+# 前端必須直接 POST 申請 → 呢個 token 一定要喺 index.html
+# ⚠️ 只有呢一個 webhook 可以公開；其他 webhook (MMS-Updater 等) 一律照擋
+ALLOWLIST_WEBHOOK_IDS=('WEBHOOK_ID_REDACTED')
 
 FAIL=0
 for f in $FILES; do
   [ -f "$f" ] || continue
   for p in "${PATTERNS[@]}"; do
     if grep -qE "$p" "$f" 2>/dev/null; then
+      # 檢查係咪白名單 webhook
+      ALLOWED=0
+      for wid in "${ALLOWLIST_WEBHOOK_IDS[@]}"; do
+        if grep -qE "discord(app)?\.com/api/webhooks/$wid/" "$f" 2>/dev/null; then
+          ALLOWED=1
+        fi
+      done
+      # 如果檔案同時含有白名單 webhook 同其他 webhook → 仍然要擋
+      OTHER=$(grep -oE 'discord(app)?\.com/api/webhooks/[0-9]+/[A-Za-z0-9_-]{10,}' "$f" 2>/dev/null | grep -vE "^discord(app)?\.com/api/webhooks/(${ALLOWLIST_WEBHOOK_IDS[*]// /|})/" | wc -l)
+      if [ "$ALLOWED" -eq 1 ] && [ "$OTHER" -eq 0 ]; then
+        echo "ℹ️ [secret-guard] $f 只有 Access-Gate 白名單 webhook（公開申請通道）— 允許"
+        continue
+      fi
       echo "❌ [secret-guard] $f 含有疑似 secret (pattern: $p)"
       echo "   commit 已拒絕。請移除 secret，改用 config/env 檔（並確保 gitignored）。"
       FAIL=1

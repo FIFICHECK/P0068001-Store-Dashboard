@@ -457,6 +457,26 @@
 </style>
 </head>
 <body>
+<!-- 🔐 訪問申請 Gate（未 approve 前遮住成個 dashboard）-->
+<div id="access-gate-overlay" style="position:fixed;inset:0;background:#f7f4ee;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+  <div style="background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.15);max-width:440px;width:100%;padding:28px 26px;text-align:center;">
+    <div style="font-size:2rem;margin-bottom:8px;">🔐</div>
+    <h2 style="margin:0 0 6px;font-size:1.15rem;">P0068001 Store Dashboard</h2>
+    <div style="color:var(--text-dim);font-size:.8rem;margin-bottom:16px;">此頁面受保護 — 需經審批先可以瀏覽</div>
+    <div id="access-gate-form">
+      <input id="access-email" type="email" placeholder="請輸入公司 Email（例如 name@company.com）" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:4px;font-size:.85rem;box-sizing:border-box;margin-bottom:10px;" required>
+      <input id="access-reason" type="text" placeholder="訪問原因（可選填）" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:4px;font-size:.85rem;box-sizing:border-box;margin-bottom:12px;">
+      <button id="access-submit" onclick="submitAccessRequest()" style="width:100%;background:#1565c0;color:#fff;border:none;border-radius:4px;padding:11px;font-size:.9rem;cursor:pointer;font-weight:700;">📨 提交訪問申請</button>
+      <div id="access-gate-msg" style="margin-top:10px;font-size:.8rem;"></div>
+    </div>
+    <div id="access-gate-waiting" style="display:none;">
+      <div style="font-size:1.5rem;margin-bottom:6px;">⏳</div>
+      <div style="font-weight:700;font-size:.95rem;">已提交申請，等待審批中…</div>
+      <div style="color:var(--text-dim);font-size:.78rem;margin:6px 0 12px;">管理員確認後會自動解鎖，請保持此頁面開啟</div>
+      <div id="access-gate-timer" style="font-size:.75rem;color:var(--text-dim);"></div>
+    </div>
+  </div>
+</div>
 <div class="container">
   <header>
     <div class="title-block">
@@ -2164,8 +2184,111 @@ function setupTrendControls() {
   });
 }
 
+/* ============ 🔐 Access Gate（訪問申請審批）============ */
+const ACCESS_STATUS_URL = 'data/access_status.json';
+const ACCESS_WEBHOOK_URL = 'https://discord.com/api/webhooks/WEBHOOK_ID_REDACTED/WEBHOOK_TOKEN_REDACTED=';
+
+function getAccessEmail() {
+  try { return (localStorage.getItem('p0068001-access-email') || '').trim().toLowerCase(); } catch(e) { return ''; }
+}
+
+function initAccessGate() {
+  const overlay = document.getElementById('access-gate-overlay');
+  if (!overlay) return;
+  const email = getAccessEmail();
+  if (email) {
+    // 已提交過 → check 係咪 approved
+    checkAccessStatus(function(approved) {
+      if (approved) { overlay.style.display = 'none'; }
+      else { showAccessWaiting(); startAccessPolling(); }
+    });
+  } else {
+    overlay.style.display = 'flex';
+  }
+}
+
+function showAccessWaiting() {
+  document.getElementById('access-gate-form').style.display = 'none';
+  document.getElementById('access-gate-waiting').style.display = 'block';
+}
+
+function startAccessPolling() {
+  let secs = 0;
+  const timer = document.getElementById('access-gate-timer');
+  setInterval(function() {
+    secs++;
+    if (timer) timer.textContent = '已等待 ' + Math.floor(secs / 60) + ' 分 ' + (secs % 60) + ' 秒';
+  }, 1000);
+  // poll 每 15 秒
+  setInterval(function() {
+    checkAccessStatus(function(approved) {
+      if (approved) {
+        const overlay = document.getElementById('access-gate-overlay');
+        overlay.style.display = 'none';
+        const msg = document.getElementById('access-gate-msg');
+        if (msg) msg.innerHTML = '<span style="color:#2e7d32;font-weight:700;">✅ 已批准！歡迎瀏覽</span>';
+      }
+    });
+  }, 15000);
+}
+
+function checkAccessStatus(cb) {
+  const email = getAccessEmail();
+  if (!email) { if (cb) cb(false); return; }
+  fetch(ACCESS_STATUS_URL + '?v=' + Date.now())
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(status) {
+      if (!status || !status.approved) { if (cb) cb(false); return; }
+      const approved = status.approved.indexOf(email) !== -1;
+      if (cb) cb(approved);
+    })
+    .catch(function() { if (cb) cb(false); });
+}
+
+function submitAccessRequest() {
+  const emailInput = document.getElementById('access-email');
+  const reasonInput = document.getElementById('access-reason');
+  const msg = document.getElementById('access-gate-msg');
+  const email = (emailInput.value || '').trim().toLowerCase();
+  if (!email || email.indexOf('@') === -1) {
+    if (msg) msg.innerHTML = '<span style="color:#c62828;">⚠️ 請輸入有效 Email</span>';
+    return;
+  }
+  const reason = (reasonInput.value || '').trim();
+  // 儲存 email
+  try { localStorage.setItem('p0068001-access-email', email); } catch(e) {}
+  const btn = document.getElementById('access-submit');
+  btn.disabled = true;
+  btn.textContent = '⏳ 提交中…';
+  if (msg) msg.innerHTML = '<span style="color:var(--text-dim);">📤 正在送出申請…</span>';
+  // POST 去 Discord webhook
+  const payload = JSON.stringify({ email: email, reason: reason, ts: new Date().toISOString() });
+  const b64 = btoa(unescape(encodeURIComponent(payload)));
+  fetch(ACCESS_WEBHOOK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: '[ACCESS-REQ] ' + b64, username: 'Access-Gate' })
+  }).then(function(r) {
+    if (r.ok) {
+      if (msg) msg.innerHTML = '<span style="color:#2e7d32;font-weight:700;">✅ 申請已送出！等待管理員審批…</span>';
+      showAccessWaiting();
+      startAccessPolling();
+    } else {
+      btn.disabled = false;
+      btn.textContent = '📨 提交訪問申請';
+      if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 送出失敗 HTTP ' + r.status + ' — 請再試</span>';
+    }
+  }).catch(function() {
+    btn.disabled = false;
+    btn.textContent = '📨 提交訪問申請';
+    if (msg) msg.innerHTML = '<span style="color:#c62828;">❌ 網絡錯誤 — 請再試</span>';
+  });
+}
+/* ============ 🔐 Access Gate end ============ */
+
 async function load() {
   document.getElementById('footer-updated').textContent = new Date().toLocaleString('zh-HK', { hour12: false });
+  initAccessGate();
   try {
     const resp = await fetch(MANIFEST_URL + '?v=' + Date.now());
     if (!resp.ok) throw new Error('HTTP ' + resp.status);

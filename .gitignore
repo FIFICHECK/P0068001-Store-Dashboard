@@ -15,3 +15,9 @@ node_modules/
 .secret*
 *token*
 !*token*.md
+
+# ── 敏感資料唔 commit（2026-08-28 安全評估後加入）──
+# 原始訂單報表 / 產品匯出（含成本價）唔公開；dashboard 只引用 data/ 內 summary JSON
+reports/order_reports/
+reports/product_exports/
+reports/monthly/

@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>P0068001 Store Dashboard — MUJI Hong Kong</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
 <style>
   :root {
     --bg: #f7f4ee;
@@ -898,8 +898,7 @@ function renderTable(manifest) {
         '<td>' + (r.orders != null ? r.orders.toLocaleString() : '—') + '</td>' +
         '<td>' + (r.qty != null ? r.qty.toLocaleString() : '—') + '</td>' +
         '<td>' + badge + '</td>' +
-        '<td><a class="dl-btn" href="reports/order_reports/' + encodeURIComponent(r.filename) + '" download>' +
-        '📥 下載 XLSX</a></td>';
+        '<td><span style="color:var(--text-dim);font-size:0.75rem;cursor:help;" title="原始 XLSX 只限內部使用（已停止公開下載）">🔒 內部檔案</span></td>';
       tbody.appendChild(tr);
     });
   });
@@ -932,19 +931,24 @@ function batchDownloadReports() {
     alert('沒有符合 filter 嘅報表 No reports match filters');
     return;
   }
-  // Download each daily XLSX file (no need to click each one)
-  let count = 0;
+  // Summary CSV only (date / GMV / orders / qty) — raw XLSX 唔公開（含倉庫資料）
+  const headers = ['日期 Date', 'GMV', '訂單 Order Lines', '件數 Qty', '版本 Version'];
+  const lines = [headers];
   filtered.forEach(function(r) {
-    if (!r.filename) return;
-    const a = document.createElement('a');
-    a.href = 'reports/order_reports/' + encodeURIComponent(r.filename);
-    a.download = r.filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    count++;
+    lines.push([r.date_iso || '', r.gmv || '', r.orders != null ? r.orders : '', r.qty != null ? r.qty : '', '23:59 最終版']);
   });
-  alert('已開始下載 ' + count + ' 份每日報表 XLSX（如瀏覽器詢問，請允許多個下載）');
+  const csv = '\uFEFF' + lines.map(function(row) {
+    return row.map(function(c) { return String(c == null ? '' : c); }).join(',');
+  }).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'P0068001_daily_summary_' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 500);
+  alert('已下載 summary CSV（' + filtered.length + ' 日）— 原始 XLSX 只限內部使用');
 }
 
 function populateMonthFilter(manifest) {
@@ -1123,8 +1127,7 @@ function renderMonthly(monthly) {
       '<td>' + (m.orders != null ? Number(m.orders).toLocaleString() : '—') + '</td>' +
       '<td>' + (m.qty != null ? Number(m.qty).toLocaleString() : '—') + '</td>' +
       '<td><span class="badge-final">✓ 23:59 最終版</span></td>' +
-      '<td><a class="dl-btn" href="reports/monthly/' + encodeURIComponent(m.filename) + '" download>' +
-      '📥 下載 XLSX</a></td>' +
+      '<td><span style="color:var(--text-dim);font-size:0.75rem;cursor:help;" title="原始 XLSX 只限內部使用（已停止公開下載）">🔒 內部檔案</span></td>' +
       '</tr>';
   });
   tbody.innerHTML = html;
@@ -1307,13 +1310,13 @@ function populateShelfLifeFilters(warnings) {
     if (w.suggested != null) sugs[w.suggested] = (sugs[w.suggested] || 0) + 1;
   });
   catSel.innerHTML = '<option value="">Primary Cat Code: 全部</option>' +
-    Object.keys(cats).sort().map(function(c) { return '<option value="' + c + '">' + c + ' (' + cats[c] + ')</option>'; }).join('');
+    Object.keys(cats).sort().map(function(c) { return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + ' (' + cats[c] + ')</option>'; }).join('');
   glSel.innerHTML = '<option value="">GreenLab 要求: 全部</option>' +
-    Object.keys(gls).sort(function(a, b) { return a - b; }).map(function(g) { return '<option value="' + g + '">' + g + ' 日 (' + gls[g] + ')</option>'; }).join('');
+    Object.keys(gls).sort(function(a, b) { return a - b; }).map(function(g) { return '<option value="' + escapeHtml(g) + '">' + escapeHtml(g) + ' 日 (' + gls[g] + ')</option>'; }).join('');
   dpSel.innerHTML = '<option value="">最短保質期: 全部</option>' +
-    Object.keys(dps).sort(function(a, b) { return String(a) === '未填' ? 1 : (String(b) === '未填' ? -1 : a - b); }).map(function(d) { return '<option value="' + d + '">' + d + (String(d) === '未填' ? '' : ' 日') + ' (' + dps[d] + ')</option>'; }).join('');
+    Object.keys(dps).sort(function(a, b) { return String(a) === '未填' ? 1 : (String(b) === '未填' ? -1 : a - b); }).map(function(d) { return '<option value="' + escapeHtml(d) + '">' + escapeHtml(d) + (String(d) === '未填' ? '' : ' 日') + ' (' + dps[d] + ')</option>'; }).join('');
   sugSel.innerHTML = '<option value="">建議到期日: 全部</option>' +
-    Object.keys(sugs).sort(function(a, b) { return a - b; }).map(function(s) { return '<option value="' + s + '">' + s + ' 日 (' + sugs[s] + ')</option>'; }).join('');
+    Object.keys(sugs).sort(function(a, b) { return a - b; }).map(function(s) { return '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + ' 日 (' + sugs[s] + ')</option>'; }).join('');
 }
 
 function applyShelfLifeFiltersTo(warnings) {
@@ -1364,7 +1367,7 @@ function applyShelfLifeFilters() {
     const isQueued = pendingSet[w.sku] !== undefined;
     const queuedVal = pendingSet[w.sku] != null ? pendingSet[w.sku] : (w.suggested || '');
     const sugInput = '<input type="number" min="1" class="sl-suggest-input" data-sku="' + w.sku + '" value="' + queuedVal + '" style="width:64px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;" title="可修改建議值後再更新">' +
-      (w.suggested_label ? '<br><span style="color:var(--text-dim);font-size:0.72rem;">' + w.suggested_label + '</span>' : '');
+      (w.suggested_label ? '<br><span style="color:var(--text-dim);font-size:0.72rem;">' + escapeHtml(w.suggested_label) + '</span>' : '');
     const btn = isQueued
       ? '<button class="sl-update-btn" data-sku="' + w.sku + '" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">✓ 已排隊</button>'
       : '<button class="sl-update-btn" data-sku="' + w.sku + '" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">🔄 更新</button>';
@@ -1375,9 +1378,9 @@ function applyShelfLifeFilters() {
           ? '<span style="color:#c62828;font-weight:700;">🔴 OFFLINE</span>'
           : '<span style="color:var(--text-dim);">—</span>');
     return '<tr>' +
-      '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/HKTV_S0000033249_S_' + encodeURIComponent((w.sku || '').split('_S_').pop()) + '" target="_blank">' + w.sku + '</a></td>' +
-      '<td>' + (w.name || '—') + '</td>' +
-      '<td style="font-size:0.72rem;color:var(--text-dim);">' + (w.category_code || '—') + '</td>' +
+      '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/HKTV_S0000033249_S_' + encodeURIComponent((w.sku || '').split('_S_').pop()) + '" target="_blank">' + escapeHtml(w.sku || '') + '</a></td>' +
+      '<td>' + escapeHtml(w.name || '—') + '</td>' +
+      '<td style="font-size:0.72rem;color:var(--text-dim);">' + escapeHtml(w.category_code || '—') + '</td>' +
       '<td>' + osCell + '</td>' +
       '<td>' + dp + '</td>' +
       '<td>' + (w.greenlab_required != null ? w.greenlab_required + ' 日' : '—') + '</td>' +
@@ -1747,7 +1750,7 @@ function renderShelfLifeCheck() {
         // value 0 = 清空（會設 MMS null）
         const sugInput = '<input type="number" min="0" class="sl-suggest-input" data-sku="' + w.sku + '" value="' + queuedVal + '" style="width:56px;padding:3px 6px;border:1px solid #ccc;border-radius:4px;font-size:0.8rem;" title="輸入 0 = 清空（唔填）；其他 = 建議日數">' +
           '<button class="sl-clear-btn" data-sku="' + w.sku + '" title="清空最短保質期" style="background:#eee;color:#c62828;border:1px solid #ddd;border-radius:4px;padding:3px 7px;font-size:0.75rem;cursor:pointer;margin-left:3px;">🗑️</button>' +
-          (w.suggested_label ? '<br><span style="color:var(--text-dim);font-size:0.72rem;">' + w.suggested_label + '</span>' : '');
+          (w.suggested_label ? '<br><span style="color:var(--text-dim);font-size:0.72rem;">' + escapeHtml(w.suggested_label) + '</span>' : '');
         const btn = isQueued
           ? '<button class="sl-update-btn" data-sku="' + w.sku + '" style="background:#2e7d32;color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">✓ 已排隊</button>'
           : '<button class="sl-update-btn" data-sku="' + w.sku + '" style="background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 10px;font-size:0.75rem;cursor:pointer;">🔄 更新</button>';
@@ -1758,9 +1761,9 @@ function renderShelfLifeCheck() {
               ? '<span style="color:#c62828;font-weight:700;">🔴 OFFLINE</span>'
               : '<span style="color:var(--text-dim);">—</span>');
         return '<tr>' +
-          '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/HKTV_S0000033249_S_' + encodeURIComponent((w.sku || '').split('_S_').pop()) + '" target="_blank">' + w.sku + '</a></td>' +
-          '<td>' + (w.name || '—') + '</td>' +
-          '<td style="font-size:0.72rem;color:var(--text-dim);">' + (w.category_code || '—') + '</td>' +
+          '<td class="sku-cell"><a class="sku-link" href="https://www.hktvmall.com/p/HKTV_S0000033249_S_' + encodeURIComponent((w.sku || '').split('_S_').pop()) + '" target="_blank">' + escapeHtml(w.sku || '') + '</a></td>' +
+          '<td>' + escapeHtml(w.name || '—') + '</td>' +
+          '<td style="font-size:0.72rem;color:var(--text-dim);">' + escapeHtml(w.category_code || '—') + '</td>' +
           '<td>' + osCell + '</td>' +
           '<td>' + dp + '</td>' +
           '<td>' + (w.greenlab_required != null ? w.greenlab_required + ' 日' : '—') + '</td>' +

@@ -24,3 +24,9 @@ reports/monthly/
 
 # GreenLab 內部規則對照表（2026-08-29 安全評估後加入）— dashboard 用 suggested_shelf_life.json 已夠
 GreenLab.xlsx
+
+
+# B pilot (2026-08-29): data/reports 移去 private repo (dashboard-private-data)
+data/*
+!data/access_allowlist.json
+reports/*

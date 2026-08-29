@@ -767,11 +767,11 @@
 </div>
 
 <script>
-const MANIFEST_URL = 'data/order_reports_manifest.json';
-const MONTHLY_URL = 'data/monthly_reports.json';
-const TREND_URL = 'data/sales_trend_data.js';
-const MONTHLY_SKU_URL = 'data/monthly_sku_data.js';
-const SHELF_LIFE_URL = 'data/shelf_life_check.json';
+const MANIFEST_URL = 'https://fificheck-access-gate.fificheck.workers.dev/data?site=P0068001&path=data/order_reports_manifest.json';
+const MONTHLY_URL = 'https://fificheck-access-gate.fificheck.workers.dev/data?site=P0068001&path=data/monthly_reports.json';
+const TREND_URL = 'https://fificheck-access-gate.fificheck.workers.dev/data?site=P0068001&path=data/sales_trend_data.json';
+const MONTHLY_SKU_URL = 'https://fificheck-access-gate.fificheck.workers.dev/data?site=P0068001&path=data/monthly_sku_data.json';
+const SHELF_LIFE_URL = 'https://fificheck-access-gate.fificheck.workers.dev/data?site=P0068001&path=data/shelf_life_check.json';
 let gmvChart = null;
 let skuGmvChart = null;
 let skuQtyChart = null;
@@ -1684,7 +1684,7 @@ function batchQueue(filter) {
 
 function downloadShelfLifeExcel() {
   // Build CSV (works everywhere) — SheetJS optional for real .xlsx
-  fetch(SHELF_LIFE_URL + '?v=' + Date.now())
+  dataFetch(SHELF_LIFE_URL)
     .then(function(resp) { return resp.ok ? resp.json() : null; })
     .then(function(data) {
       if (!data || !data.warnings) { alert('⚠️ 冇數據'); return; }
@@ -1755,7 +1755,7 @@ function clearShelfLifeQueue() {
 }
 
 function renderShelfLifeCheck() {
-  fetch(SHELF_LIFE_URL + '?v=' + Date.now())
+  dataFetch(SHELF_LIFE_URL)
     .then(function(resp) { return resp.ok ? resp.json() : null; })
     .then(function(data) {
       const meta = document.getElementById('shelf-life-check-meta');
@@ -1893,19 +1893,23 @@ function renderShelfLifeCheck() {
 
 function loadTrend() {
   // Load monthly by-SKU data (2026-01..07) first
-  const mScript = document.createElement('script');
-  mScript.src = MONTHLY_SKU_URL + '?v=' + Date.now();
-  mScript.onload = function() {
-    monthlySkuData = window.monthlySkuData || null;
-    // Then load daily trend data
-    const script = document.createElement('script');
-    script.src = TREND_URL + '?v=' + Date.now();
-    script.onload = function() {
-      trendData = window.salesTrendData;
+  (async function() {
+    try {
+      const mr = await dataFetch(MONTHLY_SKU_URL);
+      monthlySkuData = mr.ok ? await mr.json() : null;
+    } catch (e) { monthlySkuData = null; }
+    try {
+      const tr = await dataFetch(TREND_URL);
+      trendData = tr.ok ? await tr.json() : null;
       if (!trendData || !trendData.skus || trendData.skus.length === 0) {
         document.querySelector('.trend-controls').innerHTML = '<div class="empty">暫無 SKU 數據 No SKU data</div>';
         return;
       }
+      finishTrendLoad();
+    } catch (e) { console.error('trend load failed', e); }
+  })();
+}
+function finishTrendLoad() {
       setupTrendMonthFilter();
       buildSkuOptions(trendData.skus);
       // Default: All SKU (show all + aggregate chart)
@@ -2225,6 +2229,21 @@ function decodeAdminEmail() {
   try { return atob(GATE_ADMIN_EMAIL); } catch(e) { return ''; }
 }
 
+// 🔒 Private data (B pilot): worker + HMAC session cookie
+    function dataFetch(u) {
+      return fetch(u + (u.indexOf('?') >= 0 ? '&' : '?') + 'v=' + Date.now(), { credentials: 'include' });
+    }
+    async function loadSession() {
+      const saved = localStorage.getItem('p0068001-access-email');
+      if (!saved) throw new Error('no gate email');
+      const r = await fetch('https://fificheck-access-gate.fificheck.workers.dev/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ site: 'P0068001', email: saved }),
+        credentials: 'include'
+      });
+      if (!r.ok) throw new Error('session ' + r.status);
+    }
 function initAccessGate() {
   const gate = document.getElementById('access-gate-overlay');
   const status = document.getElementById('access-gate-msg');
@@ -2277,7 +2296,7 @@ async function load() {
   document.getElementById('footer-updated').textContent = new Date().toLocaleString('zh-HK', { hour12: false });
   initAccessGate();
   try {
-    const resp = await fetch(MANIFEST_URL + '?v=' + Date.now());
+    const resp = await dataFetch(MANIFEST_URL);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const manifest = await resp.json();
     fullManifest = manifest;
@@ -2286,7 +2305,7 @@ async function load() {
     renderStats(manifest);
     renderTable(manifest);
     // Load monthly reports
-    const mresp = await fetch(MONTHLY_URL + '?v=' + Date.now());
+    const mresp = await dataFetch(MONTHLY_URL);
     if (mresp.ok) {
       renderMonthly(await mresp.json());
       setupMonthlyFilter();
@@ -2315,7 +2334,13 @@ async function load() {
   }
 }
 
-load();
+loadSession()
+    .then(function() { load(); })
+    .catch(function(e) {
+      console.error('session init failed', e);
+      var st = document.getElementById('access-gate-msg');
+      if (st) st.textContent = '⚠️ 請先完成訪問申請（email 未授權或 session 過期）';
+    });
 </script>
 </body>
 </html>

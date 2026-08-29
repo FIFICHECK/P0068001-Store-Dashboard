@@ -11,7 +11,9 @@ import re
 import openpyxl
 from datetime import datetime
 
-BASE = "/home/snkwok/P0068001-Store-Dashboard"
+BASE = os.environ.get("P0068001_BASE", "/home/snkwok/P0068001-Store-Dashboard")
+# B pilot (2026-08-29): data/reports 移去 private repo (dashboard-private-data)
+# cron 用 P0068001_BASE=~/dashboard-private-data/P0068001 寫入 private repo；default 行為不變
 REPORTS_DIR = os.path.join(BASE, "reports", "order_reports")
 MONTHLY_DIR = os.path.join(BASE, "reports", "monthly")
 DATA_DIR = os.path.join(BASE, "data")

@@ -1139,16 +1139,35 @@ function renderMonthly(monthly) {
       '<td>' + (m.orders != null ? Number(m.orders).toLocaleString() : '—') + '</td>' +
       '<td>' + (m.qty != null ? Number(m.qty).toLocaleString() : '—') + '</td>' +
       '<td><span class="badge-final">✓ 23:59 最終版</span></td>' +
-      '<td><span style="color:var(--text-dim);font-size:0.75rem;cursor:help;" title="原始 XLSX 只限內部使用（已停止公開下載）">🔒 內部檔案</span></td>' +
+      '<td><button class="dl-btn" onclick="downloadMonthlyExcel()" title="由月度 summary 即時生成（唔含內部詳細資料）">📥 下載 Excel</button></td>' +
       '</tr>';
   });
   tbody.innerHTML = html;
 }
 
+// 月度合併報表 Excel 下載 — 由 data/monthly_reports.json summary 即時生成（唔含內部詳細資料）
+function downloadMonthlyExcel() {
+  if (typeof XLSX === 'undefined' || !fullMonthly || fullMonthly.length === 0) return;
+  const rows = fullMonthly.map(function(m) {
+    const gmvRaw = m.gmv_raw != null ? m.gmv_raw : (parseFloat(String(m.gmv || '').replace(/[$,]/g, '')) || 0);
+    return {
+      '月份 Month': m.month || '',
+      'GMV': gmvRaw,
+      '訂單 Order Lines': m.orders != null ? Number(m.orders) : '',
+      '件數 Qty': m.qty != null ? Number(m.qty) : '',
+      '天數 Days': m.days != null ? Number(m.days) : ''
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 8 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Monthly Summary');
+  XLSX.writeFile(wb, 'P0068001_Monthly_Summary_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+}
+
 function setupMonthlyFilter() {
   const yearSel = document.getElementById('monthly-year-filter');
   if (!yearSel) return;
-  // Years from monthly data
   const years = [];
   fullMonthly.forEach(function(m) {
     const y = (m.month || '').slice(0, 4);

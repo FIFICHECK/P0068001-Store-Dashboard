@@ -259,6 +259,10 @@ def main():
         f.write("window.salesTrendData = ")
         json.dump(trend, f, ensure_ascii=False)
         f.write(";\n")
+    # B pilot fix (2026-08-30): 前端 TREND_URL 讀 sales_trend_data.json — 一併生成
+    TREND_JSON_PATH = os.path.join(DATA_DIR, "sales_trend_data.json")
+    with open(TREND_JSON_PATH, "w", encoding="utf-8") as f:
+        json.dump(trend, f, ensure_ascii=False)
     print(f"Sales Trend: {len(sku_list)} SKUs, {len(dates)} dates")
 
 

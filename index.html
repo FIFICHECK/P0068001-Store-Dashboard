@@ -2272,19 +2272,45 @@ function submitAccessRequest() {
   const status = document.getElementById('access-gate-msg');
   if (!input || !status) return;
   const email = (input.value || '').trim().toLowerCase();
-  if (!email || email.indexOf('@') < 1) { status.textContent = '⚠️ 請輸入有效 Email'; return; }
-  status.textContent = '⏳ 送出申請中…';
-  const adminEmail = decodeAdminEmail();
-  fetch('https://fificheck-access-gate.fificheck.workers.dev/submit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify({ site: 'P0068001', email: email })
-  }).then(function() {
-    try { localStorage.setItem('p0068001-access-email', email); } catch(e) {}
-    status.textContent = '✅ 已送出申請！管理員一撳批准，你重新整理此頁即可進入。';
-  }).catch(function() {
-    status.textContent = '❌ 送出失敗 — 請直接 email ' + adminEmail;
-  });
+  if (!email || email.length < 1) { status.textContent = '⚠️ 請輸入有效 Email'; return; }
+  status.textContent = '⏳ 驗證中…';
+  // ✅ allowlist check — 已批准嘅 email 直接入（唔使 submit 申請）
+  fetch(ALLOWLIST_URL + '?v=' + Date.now())
+    .then(function(r) { return r.ok ? r.json() : []; })
+    .then(function(lst) {
+      const norm = (lst || []).map(String).map(function(s) { return s.trim().toLowerCase(); });
+      if (norm.indexOf(email) >= 0) {
+        try { localStorage.setItem('p0068001-access-email', email); } catch(e) {}
+        status.textContent = '✅ 已驗證！載入中…';
+        return fetch('https://fificheck-access-gate.fificheck.workers.dev/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ site: 'P0068001', email: email }),
+          credentials: 'include'
+        }).then(function(r) {
+          if (!r.ok) throw new Error('session ' + r.status);
+          const gate = document.getElementById('access-gate-overlay');
+          if (gate) gate.style.display = 'none';
+          load();
+        });
+      }
+      // 唔喺 allowlist — 照舊 submit 申請
+      status.textContent = '⏳ 送出申請中…';
+      const adminEmail = decodeAdminEmail();
+      return fetch('https://fificheck-access-gate.fificheck.workers.dev/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ site: 'P0068001', email: email })
+      }).then(function() {
+        try { localStorage.setItem('p0068001-access-email', email); } catch(e) {}
+        status.textContent = '✅ 已送出申請！管理員一撳批准，你重新整理此頁即可進入。';
+      }).catch(function() {
+        status.textContent = '❌ 送出失敗 — 請直接 email ' + adminEmail;
+      });
+    })
+    .catch(function(err) {
+      status.textContent = '❌ 驗證失敗 — ' + err.message;
+    });
 }
 /* ============ 🔐 Access Gate end ============ */
 

@@ -2318,7 +2318,7 @@ function submitAccessRequest() {
 
 async function load() {
   document.getElementById('footer-updated').textContent = new Date().toLocaleString('zh-HK', { hour12: false });
-  initAccessGate();
+  // initAccessGate() 已喺底部獨立 call（2026-08-31 fix）— 唔好喺度重複綁 listener
   try {
     const resp = await dataFetch(MANIFEST_URL);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -2358,6 +2358,9 @@ async function load() {
   }
 }
 
+// 🔧 fix (2026-08-31): initAccessGate 要喺 loadSession 之前獨立 call —
+// 之前喺 load() 入面（loadSession 成功先跑到）→ loadSession 失敗時 listener 冇綁定 → 撳「申請訪問」無反應
+initAccessGate();
 loadSession()
     .then(function() { load(); })
     .catch(function(e) {

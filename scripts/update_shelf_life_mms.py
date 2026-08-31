@@ -60,7 +60,7 @@ def find_product(token, sku_id):
     return j['data']['products'][0], j
 
 
-def build_edit_payload(product, new_value):
+def build_edit_payload(product, new_value, fix_warehouse=False):
     payload = {}
     for k in KEEP:
         if k in product:
@@ -89,15 +89,24 @@ def build_edit_payload(product, new_value):
     payload['additional'] = add
     # 清空支援：value 係 None 或 0 → 設 null（未填狀態）
     payload['minimum_shelf_life'] = None if new_value in (None, 0) else new_value
+    # warehouse fix (2026-08-31)：MMS 要求 5 個位置 mapping 啱先過 validation
+    # 成功 SKU reference: ready='G' deliver='hktv-standard-delivery' days='MS' slot='AM/PM' box='F'(室溫)
+    if fix_warehouse:
+        payload['packing_box_type'] = 'F'
+        hktv2 = payload['additional']['hktv']
+        hktv2['product_ready_method'] = 'G'
+        hktv2['delivery_method'] = 'hktv-standard-delivery'
+        hktv2['pickup_days'] = 'MS'
+        hktv2['pickup_timeslot'] = 'AM/PM'
     return {'product': payload}
 
 
-def update_one(token, sku, value):
+def update_one(token, sku, value, fix_warehouse=False):
     sku_id = sku.split('_S_')[-1] if '_S_' in sku else sku
     prod, j = find_product(token, sku_id)
     if prod is None:
         return {'sku': sku, 'ok': False, 'step': 'find', 'error': json.dumps(j, ensure_ascii=False)[:200]}
-    payload = build_edit_payload(prod, value)
+    payload = build_edit_payload(prod, value, fix_warehouse=fix_warehouse)
     j = call('POST', '/product/single/edit', token, payload)
     if j.get('status') != 1 or not j.get('data', {}).get('recordId'):
         return {'sku': sku, 'ok': False, 'step': 'edit', 'error': json.dumps(j, ensure_ascii=False)[:300]}
@@ -119,6 +128,8 @@ def main():
     ap.add_argument('--sku', default=None)
     ap.add_argument('--value', type=int, default=None)
     ap.add_argument('--json', default=None)
+    ap.add_argument('--fix-warehouse', action='store_true', default=False,
+                    help='set 啱 5 個 warehouse mapping 位置（ready/deliver/days/slot/box）再 update 保質期')
     a = ap.parse_args()
 
     token = a.token
@@ -135,11 +146,10 @@ def main():
     else:
         print('ERROR: need --sku --value OR --json')
         sys.exit(1)
-
-    print(f'Updating {len(jobs)} SKU(s)...')
+    print(f'Updating {len(jobs)} SKUs...')
     results = []
     for j in jobs:
-        r = update_one(token, j['sku'], j.get('value', j.get('suggested')))
+        r = update_one(token, j['sku'], j.get('value', j.get('suggested')), fix_warehouse=a.fix_warehouse)
         results.append(r)
         status = 'OK' if r['ok'] else 'FAIL'
         print(f'{status} {r.get("sku")} -> {r.get("value")} {r.get("error", "")}')

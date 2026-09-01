@@ -2229,7 +2229,9 @@ function decodeAdminEmail() {
 
 // 🔒 Private data (B pilot): worker + HMAC session cookie
     function dataFetch(u) {
-      return fetch(u + (u.indexOf('?') >= 0 ? '&' : '?') + 'v=' + Date.now(), { credentials: 'include' });
+      var _tk = null; try { _tk = localStorage.getItem('p0068001-access-token'); } catch(e) {}
+      var _hdrs = _tk ? { 'X-SB-Token': _tk } : {};
+      return fetch(u + (u.indexOf('?') >= 0 ? '&' : '?') + 'v=' + Date.now(), { credentials: 'include', headers: _hdrs });
     }
     async function loadSession() {
       const saved = localStorage.getItem('p0068001-access-email');
@@ -2241,6 +2243,7 @@ function decodeAdminEmail() {
         credentials: 'include'
       });
       if (!r.ok) throw new Error('session ' + r.status);
+      try { const _d = await r.json(); if (_d && _d.token) localStorage.setItem('p0068001-access-token', _d.token); } catch(e) {}
     }
 function initAccessGate() {
   const gate = document.getElementById('access-gate-overlay');
@@ -2291,6 +2294,7 @@ function submitAccessRequest() {
           credentials: 'include'
         }).then(function(r) {
           if (!r.ok) throw new Error('session ' + r.status);
+          r.json().then(function(_d) { if (_d && _d.token) try { localStorage.setItem('p0068001-access-token', _d.token); } catch(e) {} }).catch(function() {});
           const gate = document.getElementById('access-gate-overlay');
           if (gate) gate.style.display = 'none';
           load();

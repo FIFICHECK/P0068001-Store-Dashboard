@@ -1257,20 +1257,21 @@ function renderSkuCharts(sku, mIdx) {
       qtyData = [sku.qty[mIdx] || 0];
     }
   } else {
-    const dates = trendData.dates;
+    const _ri = getRangeIndices();
+    const dates = trendData.dates.slice(_ri[0], _ri[1] + 1);
     labels = dates.map(function(d) { return d.slice(5); });
     if (!sku) {
       skuLabel = '全部 SKU All SKUs';
       gmvData = dates.map(function(_, i) {
-        return trendData.skus.reduce(function(a, s) { return a + (s.gmv[i] || 0); }, 0);
+        return trendData.skus.reduce(function(a, s) { return a + (s.gmv[_ri[0] + i] || 0); }, 0);
       });
       qtyData = dates.map(function(_, i) {
-        return trendData.skus.reduce(function(a, s) { return a + (s.qty[i] || 0); }, 0);
+        return trendData.skus.reduce(function(a, s) { return a + (s.qty[_ri[0] + i] || 0); }, 0);
       });
     } else {
       skuLabel = displaySku(sku.sku) + ' — ' + sku.name;
-      gmvData = sku.gmv;
-      qtyData = sku.qty;
+      gmvData = sku.gmv.slice(_ri[0], _ri[1] + 1);
+      qtyData = sku.qty.slice(_ri[0], _ri[1] + 1);
     }
   }
   const totalGmv = gmvData.reduce(function(a, b) { return a + b; }, 0);
@@ -1914,12 +1915,12 @@ function loadTrend() {
 function finishTrendLoad() {
       setupTrendMonthFilter();
       buildSkuOptions(trendData.skus);
+      setupRangeControls();
       // Default: All SKU (show all + aggregate chart)
       currentSku = null;
       document.getElementById('sku-select').value = 'all';
       renderSkuCharts(null);
       renderTrendTable(trendData.skus);
-      setupRangeControls();
 }
 
 function setupTrendMonthFilter() {
@@ -2127,6 +2128,21 @@ function exportTrendExcel() {
   XLSX.writeFile(wb, fname);
 }
 
+function setRangeToLatestMonth() {
+  if (!trendData || !trendData.dates || trendData.dates.length === 0) return;
+  const dates = trendData.dates;
+  const lm = dates[dates.length - 1].slice(0, 7);
+  let s = 0;
+  while (s < dates.length && dates[s].slice(0, 7) !== lm) s++;
+  if (s >= dates.length) s = 0;
+  rangeStart = dates[s];
+  rangeEnd = dates[dates.length - 1];
+  const startEl = document.getElementById('range-start');
+  const endEl = document.getElementById('range-end');
+  if (startEl) startEl.value = rangeStart;
+  if (endEl) endEl.value = rangeEnd;
+}
+
 function setupRangeControls() {
   const startEl = document.getElementById('range-start');
   const endEl = document.getElementById('range-end');
@@ -2147,15 +2163,14 @@ function setupRangeControls() {
     renderSkuCharts(currentSku);
   });
   resetBtn.addEventListener('click', function() {
-    startEl.value = '';
-    endEl.value = '';
-    rangeStart = null;
-    rangeEnd = null;
+    setRangeToLatestMonth();
     if (currentTrendMode !== 'daily') return;
     renderTrendTable(trendData.skus);
     renderSkuCharts(currentSku);
   });
   exportBtn.addEventListener('click', exportTrendExcel);
+  // Default range = latest month with daily data (2026-09-01 fix: 8月 rollover 溝埋落 9月)
+  setRangeToLatestMonth();
 }
 
 function escapeHtml(str) {

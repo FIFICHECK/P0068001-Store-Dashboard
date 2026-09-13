@@ -25,9 +25,11 @@ BASE = 'https://merchant-web.shoalter.com'
 STORE_ID = 33249
 
 HDR = ['-H', 'Content-Type: application/json',
-       '-H', 'Accept: application/json',
-       '-H', 'Origin: https://merchant.shoalter.com',
-       '-H', 'Referer: https://merchant.shoalter.com/']
+       '-H', 'Accept: application/json, text/plain, */*',
+       '-H', 'Referer: https://merchant.shoalter.com/',
+       # MMS gateway returns 404 HTML for non-browser UAs (2026-09-13) — browser UA required
+       '-A', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+             '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36']
 
 KEEP = ['uuid', 'colour_families', 'color', 'size_system', 'size', 'option1', 'option2',
         'option3', 'option1_value', 'option2_value', 'option3_value', 'barcodes',

@@ -1141,7 +1141,9 @@ function renderMonthly(monthly) {
       '<td>' + (m.orders != null ? Number(m.orders).toLocaleString() : '—') + '</td>' +
       '<td>' + (m.qty != null ? Number(m.qty).toLocaleString() : '—') + '</td>' +
       '<td><span class="badge-final">✓ 23:59 最終版</span></td>' +
-      '<td><button class="dl-btn" onclick="downloadMonthlyExcel()" title="由月度 summary 即時生成（唔含內部詳細資料）">📥 下載 Excel</button></td>' +
+      '<td>' + (m.filename
+        ? '<button class="dl-btn" onclick="downloadMonthlyFile(\'' + (m.month || '') + '\',\'' + m.filename + '\')" title="全個月每日訂單報表合併成一份原始 Excel">📥 下載 Excel</button>'
+        : '<span style="color:var(--text-dim);font-size:0.75rem;">— 無合併檔</span>') + '</td>' +
       '</tr>';
   });
   tbody.innerHTML = html;
@@ -1167,6 +1169,18 @@ function downloadDailyExcel(dateStr) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Daily Summary');
   XLSX.writeFile(wb, 'P0068001_Daily_' + dateStr + '.xlsx');
+}
+
+// 月度合併報表下載 — 真實合併 XLSX（全個月每日訂單報表 group 埋一份），經 worker /download 授權下載
+function downloadMonthlyFile(month, filename) {
+  var email = '';
+  try { email = localStorage.getItem('p0068001-access-email') || ''; } catch (e) {}
+  if (!email) { alert('請先完成訪問驗證 Please complete access verification first'); return; }
+  if (!filename) { alert('此月份沒有合併檔案 No merged file for this month'); return; }
+  var url = 'https://fificheck-access-gate.fificheck.workers.dev/download?site=P0068001'
+    + '&email=' + encodeURIComponent(email)
+    + '&file=reports/monthly/' + filename;
+  window.location.href = url;
 }
 
 // 月度合併報表 Excel 下載 — 由 data/monthly_reports.json summary 即時生成（唔含內部詳細資料）
